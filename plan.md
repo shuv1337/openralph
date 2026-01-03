@@ -31,7 +31,7 @@ Comprehensive test suite for the Ralph TUI harness using Bun's built-in test run
           └── complex-nested.md
   ```
 
-- [ ] **1.3** Create test fixtures for plan parsing:
+- [x] **1.3** Create test fixtures for plan parsing:
   - `fixtures/plans/empty.md` - Empty file
   - `fixtures/plans/all-complete.md` - All tasks marked `[x]`
   - `fixtures/plans/partial-complete.md` - Mix of `[x]` and `[ ]`
