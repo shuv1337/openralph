@@ -98,6 +98,23 @@ const loopOptions: LoopOptions = {
 // Create abort controller for cancellation
 const abortController = new AbortController();
 
+// Cleanup function for graceful shutdown
+async function cleanup() {
+  abortController.abort();
+  await releaseLock();
+}
+
+// Handle SIGINT (Ctrl+C) and SIGTERM signals for graceful shutdown
+process.on("SIGINT", async () => {
+  await cleanup();
+  process.exit(0);
+});
+
+process.on("SIGTERM", async () => {
+  await cleanup();
+  process.exit(0);
+});
+
 // Start the TUI app and get state setters
 const { exitPromise, stateSetters } = startApp({
   options: loopOptions,
@@ -188,5 +205,9 @@ runLoop(loopOptions, stateToUse, {
   console.error("Loop error:", error);
 });
 
-// Wait for the app to exit
-await exitPromise;
+// Wait for the app to exit, then cleanup
+try {
+  await exitPromise;
+} finally {
+  await releaseLock();
+}

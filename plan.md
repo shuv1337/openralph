@@ -518,7 +518,7 @@ opencode-ralph/
   - `onComplete`: update state.status to "complete"
   - `onError`: update state.status to "error", set state.error
 
-- [ ] **11.8** Add cleanup on exit:
+- [x] **11.8** Add cleanup on exit:
   - Call `releaseLock()` in finally block
   - Handle SIGINT/SIGTERM signals
 
