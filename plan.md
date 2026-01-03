@@ -60,7 +60,7 @@ Comprehensive test suite for the Ralph TUI harness using Bun's built-in test run
   - Given 3 `- [x]` and 7 `- [ ]` items
   - Should return `{ done: 3, total: 10 }`
 
-- [ ] **2.6** Test `parsePlan()` case insensitivity:
+- [x] **2.6** Test `parsePlan()` case insensitivity:
   - Given `- [X]` (uppercase)
   - Should count as completed
 

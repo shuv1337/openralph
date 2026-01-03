@@ -34,4 +34,9 @@ describe("parsePlan", () => {
     const result = await parsePlan(path.join(fixturesDir, "partial-complete.md"));
     expect(result).toEqual({ done: 3, total: 10 });
   });
+
+  it("should count uppercase [X] as completed (case insensitive)", async () => {
+    const result = await parsePlan(path.join(fixturesDir, "uppercase-complete.md"));
+    expect(result).toEqual({ done: 3, total: 4 });
+  });
 });
