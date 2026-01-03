@@ -162,7 +162,7 @@ opencode-ralph/
 
 - [x] **3.7** Create `src/lock.ts` with `LOCK_FILE` constant (`.ralph-lock`)
 
-- [ ] **3.8** Add `acquireLock(): Promise<boolean>` to `src/lock.ts`:
+- [x] **3.8** Add `acquireLock(): Promise<boolean>` to `src/lock.ts`:
   - Check if lock file exists with `Bun.file(LOCK_FILE).exists()`
   - If exists, read PID from file
   - Check if process running with `process.kill(pid, 0)` in try/catch
