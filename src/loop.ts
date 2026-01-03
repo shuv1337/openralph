@@ -123,10 +123,20 @@ export async function runLoop(
         },
       });
 
-      // TODO: Implement event streaming (10.15)
-      // TODO: Implement tool event mapping (10.16)
-      // TODO: Implement session completion detection (10.17)
-      // TODO: Implement session error handling (10.18)
+      // Subscribe to events and iterate over the stream (10.15)
+      const events = await client.event.subscribe();
+      for await (const event of events.stream) {
+        // Filter events for current session ID
+        if (event.type === "message.part.updated") {
+          const part = event.properties.part;
+          if (part.sessionID !== sessionId) continue;
+          // TODO: Implement tool event mapping (10.16)
+        }
+
+        // TODO: Implement session completion detection (10.17)
+        // TODO: Implement session error handling (10.18)
+      }
+
       // TODO: Implement iteration completion (10.19)
 
       // Temporary: break to avoid infinite loop until remaining tasks are implemented

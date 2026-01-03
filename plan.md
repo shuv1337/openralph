@@ -446,7 +446,7 @@ opencode-ralph/
   - Parse model with `parseModel(options.model)`
   - Call `client.session.prompt()` with session ID, parts, model
 
-- [ ] **10.15** Implement event streaming:
+- [x] **10.15** Implement event streaming:
   - Call `client.event.subscribe()`
   - Iterate over `events.stream` with `for await`
   - Filter events for current session ID
