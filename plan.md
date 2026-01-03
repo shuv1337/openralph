@@ -543,7 +543,7 @@ opencode-ralph/
   - Run again, verify resume prompt appears
   - Verify iteration count and elapsed time restored
 
-- [ ] **12.4** Test pause functionality:
+- [x] **12.4** Test pause functionality:
   - Run `ralph`
   - Press `p`, verify PAUSED overlay appears
   - Verify `.ralph-pause` file created
