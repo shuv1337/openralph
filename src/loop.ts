@@ -50,7 +50,47 @@ export async function runLoop(
   const client = createOpencodeClient({ baseUrl: server.url });
 
   try {
-    // TODO: Implement main loop logic
+    // Initialize iteration counter from persisted state
+    let iteration = persistedState.iterationTimes.length;
+    let isPaused = false;
+
+    // Main loop
+    while (!signal.aborted) {
+      // Check for .ralph-done file at start of each iteration
+      const doneFile = Bun.file(".ralph-done");
+      if (await doneFile.exists()) {
+        await doneFile.delete();
+        callbacks.onComplete();
+        break;
+      }
+
+      // Check for .ralph-pause file
+      const pauseFile = Bun.file(".ralph-pause");
+      if (await pauseFile.exists()) {
+        if (!isPaused) {
+          isPaused = true;
+          callbacks.onPause();
+        }
+        await Bun.sleep(1000);
+        continue;
+      } else if (isPaused) {
+        isPaused = false;
+        callbacks.onResume();
+      }
+
+      // TODO: Implement iteration start (10.11)
+      // TODO: Implement plan parsing in loop (10.12)
+      // TODO: Implement session creation (10.13)
+      // TODO: Implement prompt sending (10.14)
+      // TODO: Implement event streaming (10.15)
+      // TODO: Implement tool event mapping (10.16)
+      // TODO: Implement session completion detection (10.17)
+      // TODO: Implement session error handling (10.18)
+      // TODO: Implement iteration completion (10.19)
+
+      // Temporary: break to avoid infinite loop until remaining tasks are implemented
+      break;
+    }
   } finally {
     // Cleanup: close server on completion, error, or abort
     server.close();

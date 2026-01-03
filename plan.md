@@ -412,7 +412,7 @@ opencode-ralph/
   - Create client with `createOpencodeClient({ baseUrl: server.url })`
   - Store server reference for cleanup
 
-- [ ] **10.8** Implement main loop structure in `runLoop`:
+- [x] **10.8** Implement main loop structure in `runLoop`:
   - Initialize iteration counter from `persistedState.iterationTimes.length`
   - Enter `while (!signal.aborted)` loop
   - Check for `.ralph-done` file at start of each iteration
