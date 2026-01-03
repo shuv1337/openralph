@@ -110,3 +110,23 @@ The default prompt template used when `--prompt` is not specified:
 READ all of {plan}. Pick ONE task. If needed, verify via web/code search. Complete task. Commit change (update the plan.md in the same commit). ONLY do one task unless GLARINGLY OBVIOUS steps should run together. Update {plan}. If you learn a critical operational detail, update AGENTS.md. When ALL tasks complete, create .ralph-done and exit. NEVER GIT PUSH. ONLY COMMIT.
 ```
 
+## Files
+
+Ralph uses several hidden files in your project directory:
+
+| File | Purpose |
+|------|---------|
+| `.ralph-state.json` | Persisted state for resume. Contains start time, initial commit hash, iteration durations, and plan file path. Allows resuming after Ctrl+C. |
+| `.ralph-lock` | Lock file to prevent multiple instances. Contains the PID of the running process. Automatically cleaned up on exit. |
+| `.ralph-done` | Created by the agent when all tasks in the plan are complete. Ralph detects this file and exits cleanly. |
+| `.ralph-pause` | Created by pressing `p` to pause the loop. Ralph checks for this file between iterations and waits until it's removed. |
+
+All files are gitignored by default. Add them to your `.gitignore` if not already present:
+
+```
+.ralph-state.json
+.ralph-lock
+.ralph-done
+.ralph-pause
+```
+

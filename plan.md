@@ -572,7 +572,7 @@ opencode-ralph/
   - With options: `ralph --plan BACKLOG.md --model anthropic/claude-opus-4`
   - All CLI options table
 
-- [ ] **13.4** Add files documentation to README:
+- [x] **13.4** Add files documentation to README:
   - `.ralph-state.json` - Persisted state for resume
   - `.ralph-lock` - Lock file to prevent multiple instances
   - `.ralph-done` - Created by agent when plan complete
