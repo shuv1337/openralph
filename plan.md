@@ -328,7 +328,7 @@ opencode-ralph/
   };
   ```
 
-- [ ] **9.3** Create `App` component with state signals:
+- [x] **9.3** Create `App` component with state signals:
   - `[state, setState]` for `LoopState`
   - Initialize with: status "starting", iteration from persisted iterationTimes.length, events empty array
   - Calculate elapsed from `Date.now() - persistedState.startTime`
