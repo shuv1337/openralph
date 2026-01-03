@@ -64,7 +64,7 @@ Comprehensive test suite for the Ralph TUI harness using Bun's built-in test run
   - Given `- [X]` (uppercase)
   - Should count as completed
 
-- [ ] **2.7** Test `parsePlan()` ignores checkboxes in code blocks:
+- [x] **2.7** Test `parsePlan()` ignores checkboxes in code blocks:
   - Given markdown with code blocks containing `- [ ]`
   - Should not count code block checkboxes (or document current behavior)
 

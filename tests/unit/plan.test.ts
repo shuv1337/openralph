@@ -39,4 +39,11 @@ describe("parsePlan", () => {
     const result = await parsePlan(path.join(fixturesDir, "uppercase-complete.md"));
     expect(result).toEqual({ done: 3, total: 4 });
   });
+
+  it("should ignore checkboxes inside fenced code blocks", async () => {
+    // code-blocks.md has 2 completed and 3 incomplete real tasks
+    // Plus several checkboxes inside ``` code blocks that should NOT be counted
+    const result = await parsePlan(path.join(fixturesDir, "code-blocks.md"));
+    expect(result).toEqual({ done: 2, total: 5 });
+  });
 });

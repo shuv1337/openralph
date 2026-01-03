@@ -21,12 +21,16 @@ export async function parsePlan(path: string): Promise<PlanProgress> {
 
   const content = await file.text();
 
+  // Remove content inside fenced code blocks (```...```) before counting
+  // This prevents counting checkboxes that appear in code examples
+  const contentWithoutCodeBlocks = content.replace(/```[\s\S]*?```/g, "");
+
   // Count completed tasks: - [x] (case insensitive)
-  const doneMatches = content.match(/- \[x\]/gi);
+  const doneMatches = contentWithoutCodeBlocks.match(/- \[x\]/gi);
   const done = doneMatches ? doneMatches.length : 0;
 
   // Count incomplete tasks: - [ ]
-  const notDoneMatches = content.match(/- \[ \]/g);
+  const notDoneMatches = contentWithoutCodeBlocks.match(/- \[ \]/g);
   const notDone = notDoneMatches ? notDoneMatches.length : 0;
 
   return {
