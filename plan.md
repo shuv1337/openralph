@@ -69,7 +69,7 @@ opencode-ralph/
 
 - [x] **1.3** Run `bun install` to install all dependencies
 
-- [ ] **1.4** Create directory structure: `src/`, `src/components/`, `src/util/`
+- [x] **1.4** Create directory structure: `src/`, `src/components/`, `src/util/`
 
 ### Phase 2: Type Definitions
 
