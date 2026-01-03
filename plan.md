@@ -422,12 +422,12 @@ opencode-ralph/
   - Use `Bun.file(".ralph-done").exists()`
   - If exists, delete file, call `callbacks.onComplete()`, break loop
 
-- [ ] **10.10** Implement `.ralph-pause` check:
+- [x] **10.10** Implement `.ralph-pause` check:
   - Use `Bun.file(".ralph-pause").exists()`
   - If exists, call `callbacks.onPause()`, sleep 1000ms, continue loop
   - Track pause state to call `callbacks.onResume()` when unpaused
 
-- [ ] **10.11** Implement iteration start:
+- [x] **10.11** Implement iteration start:
   - Increment iteration counter
   - Record iteration start time
   - Call `callbacks.onIterationStart(iteration)`

@@ -78,7 +78,19 @@ export async function runLoop(
         callbacks.onResume();
       }
 
-      // TODO: Implement iteration start (10.11)
+      // Iteration start (10.11)
+      iteration++;
+      const iterationStartTime = Date.now();
+      callbacks.onIterationStart(iteration);
+      
+      // Add separator event for new iteration
+      callbacks.onEvent({
+        iteration,
+        type: "separator",
+        text: `iteration ${iteration}`,
+        timestamp: iterationStartTime,
+      });
+
       // TODO: Implement plan parsing in loop (10.12)
       // TODO: Implement session creation (10.13)
       // TODO: Implement prompt sending (10.14)
