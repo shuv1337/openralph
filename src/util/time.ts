@@ -18,3 +18,21 @@ export function formatDuration(ms: number): string {
   }
   return `${seconds}s`;
 }
+
+/**
+ * Calculate estimated time remaining based on iteration times.
+ * @param iterationTimes - Array of past iteration durations in milliseconds
+ * @param remainingTasks - Number of tasks remaining
+ * @returns Estimated time in milliseconds, or null if no data available
+ */
+export function calculateEta(
+  iterationTimes: number[],
+  remainingTasks: number,
+): number | null {
+  if (iterationTimes.length === 0) {
+    return null;
+  }
+  const sum = iterationTimes.reduce((acc, time) => acc + time, 0);
+  const average = sum / iterationTimes.length;
+  return average * remainingTasks;
+}

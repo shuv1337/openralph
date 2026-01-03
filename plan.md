@@ -136,7 +136,7 @@ opencode-ralph/
   - If minutes > 0: return `"Xm Ys"`
   - Else: return `"Xs"`
 
-- [ ] **3.2** Add `calculateEta(iterationTimes: number[], remainingTasks: number): number | null` to `src/util/time.ts`:
+- [x] **3.2** Add `calculateEta(iterationTimes: number[], remainingTasks: number): number | null` to `src/util/time.ts`:
   - Return `null` if `iterationTimes.length === 0`
   - Calculate average: `sum / length`
   - Return `average * remainingTasks`
