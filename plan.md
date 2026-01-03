@@ -45,7 +45,7 @@ Comprehensive test suite for the Ralph TUI harness using Bun's built-in test run
   - Should return `{ done: 0, total: 0 }`
   - Verify no error thrown
 
-- [ ] **2.2** Test `parsePlan()` with empty file:
+- [x] **2.2** Test `parsePlan()` with empty file:
   - Should return `{ done: 0, total: 0 }`
 
 - [ ] **2.3** Test `parsePlan()` with all completed tasks:

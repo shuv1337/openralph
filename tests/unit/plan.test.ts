@@ -14,4 +14,9 @@ describe("parsePlan", () => {
     // Verify the function completes without throwing
     await expect(parsePlan("/nonexistent/path/to/plan.md")).resolves.toBeDefined();
   });
+
+  it("should return { done: 0, total: 0 } for empty file", async () => {
+    const result = await parsePlan(path.join(fixturesDir, "empty.md"));
+    expect(result).toEqual({ done: 0, total: 0 });
+  });
 });
