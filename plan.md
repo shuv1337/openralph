@@ -267,7 +267,7 @@ opencode-ralph/
 
 ### Phase 7: TUI Components - Log
 
-- [ ] **7.1** Create `src/components/log.tsx` with basic scrollbox structure:
+- [x] **7.1** Create `src/components/log.tsx` with basic scrollbox structure:
   - Import `solid-js`, `For`, colors
   - Export `Log` component that takes props: `events: ToolEvent[]`
   - Return a `<scrollbox>` with `stickyScroll={true}` and `stickyStart="bottom"`
