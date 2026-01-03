@@ -141,7 +141,7 @@ opencode-ralph/
   - Calculate average: `sum / length`
   - Return `average * remainingTasks`
 
-- [ ] **3.3** Add `formatEta(ms: number | null): string` to `src/util/time.ts`:
+- [x] **3.3** Add `formatEta(ms: number | null): string` to `src/util/time.ts`:
   - Return `"--:--"` if `ms === null`
   - Otherwise return `"~" + formatDuration(ms) + " remaining"`
 

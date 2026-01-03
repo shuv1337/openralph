@@ -36,3 +36,15 @@ export function calculateEta(
   const average = sum / iterationTimes.length;
   return average * remainingTasks;
 }
+
+/**
+ * Format an ETA value to a human-readable string.
+ * @param ms - Estimated time remaining in milliseconds, or null if unavailable
+ * @returns Formatted string like "~5m 30s remaining" or "--:--" if null
+ */
+export function formatEta(ms: number | null): string {
+  if (ms === null) {
+    return "--:--";
+  }
+  return `~${formatDuration(ms)} remaining`;
+}
