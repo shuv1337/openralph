@@ -437,7 +437,7 @@ opencode-ralph/
   - Call `parsePlan(options.planFile)`
   - Call `callbacks.onTasksUpdated(done, total)`
 
-- [ ] **10.13** Implement session creation:
+- [x] **10.13** Implement session creation:
   - Call `client.session.create()`
   - Extract session ID from response
 

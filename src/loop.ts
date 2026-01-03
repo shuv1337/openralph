@@ -94,7 +94,15 @@ export async function runLoop(
       // Parse plan and update task counts (10.12)
       const { done, total } = await parsePlan(options.planFile);
       callbacks.onTasksUpdated(done, total);
-      // TODO: Implement session creation (10.13)
+
+      // Create session (10.13)
+      const sessionResult = await client.session.create();
+      if (!sessionResult.data) {
+        callbacks.onError("Failed to create session");
+        break;
+      }
+      const sessionId = sessionResult.data.id;
+
       // TODO: Implement prompt sending (10.14)
       // TODO: Implement event streaming (10.15)
       // TODO: Implement tool event mapping (10.16)
