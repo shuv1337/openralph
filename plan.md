@@ -120,7 +120,7 @@ opencode-ralph/
 - [x] **2.5** Add `saveState(state: PersistedState)` function to `src/state.ts`:
   - Write state to `STATE_FILE` using `Bun.write()` with `JSON.stringify(state, null, 2)`
 
-- [ ] **2.6** Add `LoopOptions` type to `src/state.ts`:
+- [x] **2.6** Add `LoopOptions` type to `src/state.ts`:
   ```typescript
   export type LoopOptions = {
     planFile: string;

@@ -38,3 +38,9 @@ export async function loadState(): Promise<PersistedState | null> {
 export async function saveState(state: PersistedState): Promise<void> {
   await Bun.write(STATE_FILE, JSON.stringify(state, null, 2));
 }
+
+export type LoopOptions = {
+  planFile: string;
+  model: string;
+  prompt: string;
+};
