@@ -461,7 +461,7 @@ opencode-ralph/
   - Check for `session.idle` event with matching session ID
   - Break out of event loop when detected
 
-- [ ] **10.18** Implement session error handling:
+- [x] **10.18** Implement session error handling:
   - Check for `session.error` event
   - Extract error message
   - Call `callbacks.onError(message)`

@@ -155,7 +155,20 @@ export async function runLoop(
           break;
         }
 
-        // TODO: Implement session error handling (10.18)
+        // Session error handling (10.18)
+        if (event.type === "session.error") {
+          const props = event.properties;
+          if (props.sessionID !== sessionId || !props.error) continue;
+          
+          // Extract error message from error object
+          let errorMessage = String(props.error.name);
+          if ("data" in props.error && props.error.data && "message" in props.error.data) {
+            errorMessage = String(props.error.data.message);
+          }
+          
+          callbacks.onError(errorMessage);
+          throw new Error(errorMessage);
+        }
       }
 
       // TODO: Implement iteration completion (10.19)
