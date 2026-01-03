@@ -296,16 +296,16 @@ opencode-ralph/
 
 ### Phase 8: TUI Components - Paused Overlay
 
-- [ ] **8.1** Create `src/components/paused.tsx`:
+- [x] **8.1** Create `src/components/paused.tsx`:
   - Import `solid-js`, `Show`, colors
   - Export `PausedOverlay` component that takes props: `visible: boolean`
 
-- [ ] **8.2** Add overlay box structure:
+- [x] **8.2** Add overlay box structure:
   - Use `<Show when={visible}>` to conditionally render
   - Outer box: `position="absolute"`, full width/height, centered content
   - Use semi-transparent background effect (bgHighlight color)
 
-- [ ] **8.3** Add overlay content:
+- [x] **8.3** Add overlay content:
   - Inner box with padding, border, bgPanel background
   - Large `⏸ PAUSED` text in yellow
   - Smaller `press p to resume` hint in muted color
