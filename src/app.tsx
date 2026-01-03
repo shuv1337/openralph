@@ -50,6 +50,47 @@ export function App(props: AppProps) {
     return calculateEta(props.persistedState.iterationTimes, remainingTasks);
   };
 
+  // Pause file path
+  const PAUSE_FILE = ".ralph-pause";
+
+  // Toggle pause by creating/deleting .ralph-pause file
+  const togglePause = async () => {
+    const file = Bun.file(PAUSE_FILE);
+    const exists = await file.exists();
+    if (exists) {
+      // Resume: delete pause file and update status
+      await Bun.write(PAUSE_FILE, ""); // Ensure file exists before unlinking
+      const fs = await import("node:fs/promises");
+      await fs.unlink(PAUSE_FILE);
+      setState((prev) => ({ ...prev, status: "running" }));
+    } else {
+      // Pause: create pause file and update status
+      await Bun.write(PAUSE_FILE, String(process.pid));
+      setState((prev) => ({ ...prev, status: "paused" }));
+    }
+  };
+
+  // Keyboard handling
+  useKeyboard((e) => {
+    // p key: toggle pause
+    if (e.name === "p" && !e.ctrl && !e.meta) {
+      togglePause();
+      return;
+    }
+
+    // q key: quit
+    if (e.name === "q" && !e.ctrl && !e.meta) {
+      props.onQuit();
+      return;
+    }
+
+    // Ctrl+C: quit
+    if (e.name === "c" && e.ctrl) {
+      props.onQuit();
+      return;
+    }
+  });
+
   return (
     <box
       flexDirection="column"

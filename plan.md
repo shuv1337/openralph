@@ -333,7 +333,7 @@ opencode-ralph/
   - Initialize with: status "starting", iteration from persisted iterationTimes.length, events empty array
   - Calculate elapsed from `Date.now() - persistedState.startTime`
 
-- [ ] **9.4** Add keyboard handling to App:
+- [x] **9.4** Add keyboard handling to App:
   - Use `useKeyboard()` hook
   - `p` key: toggle pause (create/delete `.ralph-pause` file)
   - `q` key: call `onQuit()`
