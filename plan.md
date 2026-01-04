@@ -211,7 +211,7 @@ Comprehensive test suite for the Ralph TUI harness using Bun's built-in test run
 
 ## Phase 8: Integration Tests
 
-- [ ] **8.1** Test complete Ralph iteration cycle (mocked):
+- [x] **8.1** Test complete Ralph iteration cycle (mocked):
   - Mock `createOpencodeServer` and `createOpencodeClient`
   - Verify callbacks called in correct order:
     1. `onIterationStart`
