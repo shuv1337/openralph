@@ -2,11 +2,12 @@
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import { acquireLock, releaseLock } from "./lock";
-import { loadState, saveState, PersistedState, LoopOptions } from "./state";
+import { loadState, saveState, PersistedState, LoopOptions, MAX_EVENTS } from "./state";
 import { confirm } from "./prompt";
-import { getHeadHash } from "./git";
+import { getHeadHash, getDiffStats, getCommitsSince } from "./git";
 import { startApp } from "./app";
 import { runLoop } from "./loop";
+import { initLog, log } from "./util/log";
 
 async function main() {
   const argv = await yargs(hideBin(process.argv))
@@ -50,6 +51,13 @@ async function main() {
   try {
     // Load existing state if present
     const existingState = await loadState();
+    
+    // Log whether state was found (before initLog, so use console)
+    if (existingState) {
+      console.log(`Found existing state: ${existingState.iterationTimes.length} iterations, started at ${new Date(existingState.startTime).toISOString()}`);
+    } else {
+      console.log("No existing state found, will create fresh state");
+    }
 
     // Determine the state to use after confirmation prompts
     let stateToUse: PersistedState | null = null;
@@ -78,8 +86,14 @@ async function main() {
       }
     }
 
+    // Initialize logging (reset log when state is reset)
+    const isNewRun = !stateToUse;
+    initLog(isNewRun);
+    log("main", "Ralph starting", { plan: argv.plan, model: argv.model, reset: shouldReset });
+    
     // Create fresh state if needed
     if (!stateToUse) {
+      log("main", "Creating fresh state");
       const headHash = await getHeadHash();
       stateToUse = {
         startTime: Date.now(),
@@ -88,6 +102,8 @@ async function main() {
         planFile: argv.plan,
       };
       await saveState(stateToUse);
+    } else {
+      log("main", "Resuming existing state", { iterations: stateToUse.iterationTimes.length });
     }
 
     // Create LoopOptions from CLI arguments
@@ -118,15 +134,30 @@ async function main() {
     });
 
     // Start the TUI app and get state setters
-    const { exitPromise, stateSetters } = startApp({
+    log("main", "Starting TUI app");
+    const { exitPromise, stateSetters } = await startApp({
       options: loopOptions,
       persistedState: stateToUse,
       onQuit: () => {
+        log("main", "onQuit callback triggered");
         abortController.abort();
       },
     });
+    log("main", "TUI app started, state setters available");
+
+    // Fetch initial diff stats and commits on resume
+    const initialDiff = await getDiffStats(stateToUse.initialCommitHash);
+    const initialCommits = await getCommitsSince(stateToUse.initialCommitHash);
+    stateSetters.setState((prev) => ({
+      ...prev,
+      linesAdded: initialDiff.added,
+      linesRemoved: initialDiff.removed,
+      commits: initialCommits,
+    }));
+    log("main", "Initial stats loaded", { diff: initialDiff, commits: initialCommits });
 
     // Start the loop in parallel with callbacks wired to app state
+    log("main", "Starting loop");
     runLoop(loopOptions, stateToUse, {
       onIterationStart: (iteration) => {
         // Update state.iteration and status to running
@@ -137,11 +168,16 @@ async function main() {
         }));
       },
       onEvent: (event) => {
-        // Append event to state.events
-        stateSetters.setState((prev) => ({
-          ...prev,
-          events: [...prev.events, event],
-        }));
+        // Append event to state.events and trim to MAX_EVENTS
+        stateSetters.setState((prev) => {
+          const newEvents = [...prev.events, event];
+          return {
+            ...prev,
+            events: newEvents.length > MAX_EVENTS
+              ? newEvents.slice(-MAX_EVENTS)
+              : newEvents,
+          };
+        });
       },
       onIterationComplete: (iteration, duration, commits) => {
         // Update the separator event for this iteration with duration/commits
@@ -174,6 +210,14 @@ async function main() {
           commits,
         }));
       },
+      onDiffUpdated: (added, removed) => {
+        // Update state.linesAdded and state.linesRemoved
+        stateSetters.setState((prev) => ({
+          ...prev,
+          linesAdded: added,
+          linesRemoved: removed,
+        }));
+      },
       onPause: () => {
         // Update state.status to "paused"
         stateSetters.setState((prev) => ({
@@ -204,13 +248,18 @@ async function main() {
         }));
       },
     }, abortController.signal).catch((error) => {
+      log("main", "Loop error", { error: error instanceof Error ? error.message : String(error) });
       console.error("Loop error:", error);
     });
 
     // Wait for the app to exit, then cleanup
+    log("main", "Waiting for exit");
     await exitPromise;
+    log("main", "Exit received, cleaning up");
   } finally {
     await releaseLock();
+    log("main", "Lock released, exiting process");
+    process.exit(0);
   }
 }
 

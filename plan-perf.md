@@ -14,7 +14,7 @@ Fix TUI freezing caused by memory leak and excessive CPU usage.
 ## Phase 1: Event List Memory Management
 
 - [x] Add `MAX_EVENTS` constant to `src/state.ts` (e.g., 200)
-- [ ] Update `onEvent` callback in `src/index.ts` to slice events array to keep only last `MAX_EVENTS`
+- [x] Update `onEvent` callback in `src/index.ts` to slice events array to keep only last `MAX_EVENTS`
 - [ ] Add unit test in `tests/unit/state.test.ts` to verify event trimming behavior
 - [ ] Verify memory usage stays bounded after 20+ iterations
 
