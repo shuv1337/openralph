@@ -26,13 +26,34 @@ function createBatchStateUpdater(
 ) {
   let pendingUpdates: Array<(prev: LoopState) => Partial<LoopState>> = [];
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  
+  // Tracking stats for logging
+  let totalUpdatesQueued = 0;
+  let totalFlushes = 0;
+  let lastLogTime = Date.now();
+  const LOG_INTERVAL_MS = 10000; // Log stats every 10 seconds
 
   function flush() {
     if (pendingUpdates.length === 0) return;
     
     const updates = pendingUpdates;
+    const batchSize = updates.length;
     pendingUpdates = [];
     timeoutId = null;
+    totalFlushes++;
+
+    // Log batching stats periodically to avoid log spam
+    const now = Date.now();
+    if (now - lastLogTime >= LOG_INTERVAL_MS) {
+      const avgBatchSize = totalFlushes > 0 ? (totalUpdatesQueued / totalFlushes).toFixed(1) : "0";
+      log("batcher", "Batching stats", {
+        totalUpdatesQueued,
+        totalFlushes,
+        avgBatchSize,
+        currentBatchSize: batchSize,
+      });
+      lastLogTime = now;
+    }
 
     // Apply all pending updates in a single setState call
     setState((prev) => {
@@ -50,6 +71,7 @@ function createBatchStateUpdater(
      */
     queueUpdate(updater: (prev: LoopState) => Partial<LoopState>) {
       pendingUpdates.push(updater);
+      totalUpdatesQueued++;
       
       if (timeoutId === null) {
         timeoutId = setTimeout(flush, debounceMs);

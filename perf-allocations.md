@@ -89,7 +89,10 @@ Every render:
 
 ### Phase 6: State Update Batching Review
 
-- [ ] Verify `batchedUpdater` is actually coalescing updates (add logging)
+- [x] Verify `batchedUpdater` is actually coalescing updates (add logging)
+  - **DONE**: Added stats tracking (totalUpdatesQueued, totalFlushes) and periodic logging every 10s
+  - Logs batch size, total updates, total flushes, and average batch size to `.ralph.log`
+  - Check logs with: `grep batcher .ralph.log` to verify coalescing behavior
 - [ ] Consider increasing debounce from 50ms to 100ms during high event throughput
 - [ ] Ensure `flushNow()` is called appropriately for critical updates only
 
