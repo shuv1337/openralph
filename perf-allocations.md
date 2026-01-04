@@ -93,7 +93,8 @@ Every render:
   - **DONE**: Added stats tracking (totalUpdatesQueued, totalFlushes) and periodic logging every 10s
   - Logs batch size, total updates, total flushes, and average batch size to `.ralph.log`
   - Check logs with: `grep batcher .ralph.log` to verify coalescing behavior
-- [ ] Consider increasing debounce from 50ms to 100ms during high event throughput
+- [x] Consider increasing debounce from 50ms to 100ms during high event throughput
+  - **DONE**: Changed from 50ms to 100ms in index.ts:231 for better batch coalescing during high throughput
 - [ ] Ensure `flushNow()` is called appropriately for critical updates only
 
 ### Phase 7: Testing & Validation

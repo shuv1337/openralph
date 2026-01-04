@@ -228,7 +228,8 @@ async function main() {
     log("main", "TUI app started, state setters available");
 
     // Create batched updater for coalescing rapid state changes
-    const batchedUpdater = createBatchStateUpdater(stateSetters.setState, 50);
+    // Use 100ms debounce for better batching during high event throughput
+    const batchedUpdater = createBatchStateUpdater(stateSetters.setState, 100);
 
     // Fetch initial diff stats and commits on resume
     const initialDiff = await getDiffStats(stateToUse.initialCommitHash);
