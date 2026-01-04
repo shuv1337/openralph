@@ -456,4 +456,44 @@ describe("ralph flow integration", () => {
     // Verify onComplete was called (due to .ralph-done file)
     expect(callbackOrder).toContain("onComplete");
   });
+
+  it("should exit cleanly when abort signal is triggered mid-iteration", async () => {
+    const options: LoopOptions = {
+      planFile: testPlanFile,
+      model: "anthropic/claude-sonnet-4",
+      prompt: "Test prompt for {plan}",
+    };
+
+    const persistedState: PersistedState = {
+      startTime: Date.now(),
+      initialCommitHash: "abc123",
+      iterationTimes: [],
+      planFile: testPlanFile,
+    };
+
+    const callbacks = createTestCallbacks();
+    const controller = new AbortController();
+
+    // Schedule abort after the iteration starts but before it can complete multiple iterations
+    // This gives time for the loop to start and begin processing
+    setTimeout(() => {
+      controller.abort();
+    }, 100);
+
+    // runLoop should exit without throwing when aborted
+    await runLoop(options, persistedState, callbacks, controller.signal);
+
+    // Verify the loop exited cleanly (no error callbacks)
+    const errorEvents = callbackOrder.filter((c) => c.startsWith("onError:"));
+    expect(errorEvents).toHaveLength(0);
+
+    // Verify onComplete was NOT called (abort is different from completion)
+    expect(callbackOrder).not.toContain("onComplete");
+
+    // Verify at least one iteration started before abort
+    const iterationStartEvents = callbackOrder.filter((c) =>
+      c.startsWith("onIterationStart:")
+    );
+    expect(iterationStartEvents.length).toBeGreaterThanOrEqual(1);
+  });
 });

@@ -232,7 +232,7 @@ Comprehensive test suite for the Ralph TUI harness using Bun's built-in test run
   - Verify `onComplete` callback called
   - Verify loop exits cleanly
 
-- [ ] **8.4** Test abort signal handling:
+- [x] **8.4** Test abort signal handling:
   - Start loop with AbortController
   - Call `abort()` mid-iteration
   - Verify loop exits without error
