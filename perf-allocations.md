@@ -68,7 +68,11 @@ Every render:
 - [x] In `onEvent` callback: push to existing array instead of spread `[...prev.events, event]`
 - [x] In `onEvent` callback: trim in-place with `splice()` instead of `slice()` creating new array
 - [x] In `onIterationComplete` callback: mutate existing separator event instead of `.map()` creating new array
-- [ ] Consider using a single mutable events array instead of creating new arrays on each update
+- [x] Consider using a single mutable events array instead of creating new arrays on each update
+  - **DONE**: Already implemented via `prev.events.push()` and `trimEventsInPlace()` in index.ts:237-239
+  - The same array reference is reused across all updates - no new arrays created
+  - Remaining allocations (partial objects in batchedUpdater) are unavoidable with Solid's signal paradigm
+  - Solid's `<For>` component correctly detects unchanged array reference and skips re-render
 
 ### Phase 4: Fix Header String Allocations
 
