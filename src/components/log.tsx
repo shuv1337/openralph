@@ -1,4 +1,4 @@
-import { For, Show, createSignal, onCleanup, onMount } from "solid-js";
+import { For, Index, Show, createSignal, onCleanup, onMount } from "solid-js";
 import { colors, TOOL_ICONS } from "./colors";
 import { formatDuration } from "../util/time";
 import type { ToolEvent } from "../state";
@@ -10,6 +10,15 @@ const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", 
  * Default icon when tool type is unknown
  */
 const DEFAULT_ICON = "\u2699"; // ⚙
+
+/**
+ * Generates a stable key for an event item.
+ * Uses iteration number and timestamp for uniqueness.
+ * This ensures consistent identity across re-renders.
+ */
+export function getEventKey(event: ToolEvent): string {
+  return `${event.iteration}-${event.timestamp}`;
+}
 
 /**
  * Maps tool types to their display colors.
@@ -143,23 +152,23 @@ export function Log(props: LogProps) {
         },
       }}
     >
-      <For each={itemsWithSpinner()}>
-        {(item) => (
+      <Index each={itemsWithSpinner()}>
+        {(item, index) => (
           <Show
-            when={item.type === "spinner"}
+            when={item().type === "spinner"}
             fallback={
               <Show
-                when={(item as { type: "event"; event: ToolEvent }).event.type === "separator"}
-                fallback={<ToolEventItem event={(item as { type: "event"; event: ToolEvent }).event} />}
+                when={(item() as { type: "event"; event: ToolEvent }).event.type === "separator"}
+                fallback={<ToolEventItem event={(item() as { type: "event"; event: ToolEvent }).event} />}
               >
-                <SeparatorEvent event={(item as { type: "event"; event: ToolEvent }).event} />
+                <SeparatorEvent event={(item() as { type: "event"; event: ToolEvent }).event} />
               </Show>
             }
           >
             <Spinner />
           </Show>
         )}
-      </For>
+      </Index>
     </scrollbox>
   );
 }

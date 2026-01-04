@@ -27,10 +27,10 @@ Fix TUI freezing caused by memory leak and excessive CPU usage.
 
 ## Phase 3: Optimize Event List Rendering
 
-- [ ] Extract event item key function in `src/components/log.tsx` to use stable keys (e.g., `${iteration}-${timestamp}`)
+- [x] Extract event item key function in `src/components/log.tsx` to use stable keys (e.g., `${iteration}-${timestamp}`)
 - [ ] Wrap `ToolEventItem` component with memoization to prevent re-renders of unchanged items
 - [ ] Wrap `SeparatorEvent` component with memoization to prevent re-renders of unchanged items
-- [ ] Add `index` prop to `<For>` loop for stable keying
+- [x] Add `index` prop to `<For>` loop for stable keying
 
 ## Phase 4: Batch State Updates
 
