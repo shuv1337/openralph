@@ -78,8 +78,8 @@ Every render:
 
 ### Phase 5: Fix Elapsed Timer
 
-- [ ] Only update elapsed signal when component is visible/active
-- [ ] Consider longer interval (5s) or skip updates when paused
+- [x] Only update elapsed signal when component is visible/active
+- [x] Consider longer interval (5s) or skip updates when paused
 - [ ] Use `requestAnimationFrame` pattern instead of `setInterval` if available
 
 ### Phase 6: State Update Batching Review
