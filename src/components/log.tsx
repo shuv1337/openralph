@@ -1,4 +1,4 @@
-import { For, Index, Show, createMemo, createSignal, onCleanup, onMount } from "solid-js";
+import { For, Show, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import { colors, TOOL_ICONS } from "./colors";
 import { formatDuration } from "../util/time";
 import type { ToolEvent } from "../state";
@@ -157,18 +157,11 @@ function ToolEventItem(props: { event: ToolEvent }) {
 /**
  * Scrollable event log component displaying tool events and iteration separators.
  * Uses stickyScroll to keep the view at the bottom as new events arrive.
+ * 
+ * PERF: Uses <For> directly on props.events to avoid allocating wrapper objects.
+ * Spinner is rendered conditionally outside the loop to avoid array allocations.
  */
 export function Log(props: LogProps) {
-  // Create a derived list that includes a spinner placeholder at the end when running
-  const itemsWithSpinner = () => {
-    const items: Array<{ type: "event"; event: ToolEvent } | { type: "spinner" }> = 
-      props.events.map(event => ({ type: "event" as const, event }));
-    if (props.isRunning) {
-      items.push({ type: "spinner" as const });
-    }
-    return items;
-  };
-
   return (
     <scrollbox
       flexGrow={1}
@@ -187,23 +180,19 @@ export function Log(props: LogProps) {
         },
       }}
     >
-      <Index each={itemsWithSpinner()}>
-        {(item, index) => (
+      <For each={props.events}>
+        {(event) => (
           <Show
-            when={item().type === "spinner"}
-            fallback={
-              <Show
-                when={(item() as { type: "event"; event: ToolEvent }).event.type === "separator"}
-                fallback={<ToolEventItem event={(item() as { type: "event"; event: ToolEvent }).event} />}
-              >
-                <SeparatorEvent event={(item() as { type: "event"; event: ToolEvent }).event} />
-              </Show>
-            }
+            when={event.type === "separator"}
+            fallback={<ToolEventItem event={event} />}
           >
-            <Spinner isIdle={props.isIdle} />
+            <SeparatorEvent event={event} />
           </Show>
         )}
-      </Index>
+      </For>
+      <Show when={props.isRunning}>
+        <Spinner isIdle={props.isIdle} />
+      </Show>
     </scrollbox>
   );
 }
