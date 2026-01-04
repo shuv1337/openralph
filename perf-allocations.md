@@ -95,7 +95,10 @@ Every render:
   - Check logs with: `grep batcher .ralph.log` to verify coalescing behavior
 - [x] Consider increasing debounce from 50ms to 100ms during high event throughput
   - **DONE**: Changed from 50ms to 100ms in index.ts:231 for better batch coalescing during high throughput
-- [ ] Ensure `flushNow()` is called appropriately for critical updates only
+- [x] Ensure `flushNow()` is called appropriately for critical updates only
+  - **DONE**: Critical callbacks (`onIterationStart`, `onIterationComplete`, `onTasksUpdated`, `onPause`, `onResume`, `onComplete`, `onError`, `onIdleChanged`) all bypass the batcher entirely by calling `stateSetters.setState` directly
+  - Only non-critical updates (`onEvent`, `onCommitsUpdated`, `onDiffUpdated`) use `batchedUpdater.queueUpdate`
+  - The `flushNow()` method exists as a safety valve but is intentionally unused - the current design is superior because critical updates never enter the batch queue in the first place
 
 ### Phase 7: Testing & Validation
 
