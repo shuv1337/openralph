@@ -35,5 +35,19 @@ describe("git utilities", () => {
       // There are no commits since HEAD, so count should be 0
       expect(count).toBe(0);
     });
+
+    it("should return correct count for ancestor commit", async () => {
+      // Get the hash of HEAD~5 (5 commits before HEAD)
+      const proc = Bun.spawn(["git", "rev-parse", "HEAD~5"], {
+        stdout: "pipe",
+      });
+      const ancestorHash = (await new Response(proc.stdout).text()).trim();
+      await proc.exited;
+
+      const count = await getCommitsSince(ancestorHash);
+
+      // There should be exactly 5 commits since HEAD~5
+      expect(count).toBe(5);
+    });
   });
 });

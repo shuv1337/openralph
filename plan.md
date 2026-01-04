@@ -171,7 +171,7 @@ Comprehensive test suite for the Ralph TUI harness using Bun's built-in test run
 - [x] **6.2** Test `getCommitsSince()` with current HEAD:
   - `getCommitsSince(currentHead)` should return `0`
 
-- [ ] **6.3** Test `getCommitsSince()` with ancestor commit:
+- [x] **6.3** Test `getCommitsSince()` with ancestor commit:
   - Get HEAD~5 hash
   - `getCommitsSince(headMinus5)` should return `5`
 
