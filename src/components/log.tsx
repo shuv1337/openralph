@@ -52,20 +52,49 @@ function getToolColor(icon: string | undefined): string {
 export type LogProps = {
   events: ToolEvent[];
   isRunning: boolean;
+  isIdle: boolean;
 };
 
 /**
- * Animated spinner component using braille characters
+ * Animated spinner component using braille characters.
+ * Only animates when isIdle is false (tool events are arriving).
+ * Shows static spinner when idle to reduce unnecessary re-renders.
  */
-function Spinner() {
+function Spinner(props: { isIdle: boolean }) {
   const [frame, setFrame] = createSignal(0);
+  let intervalRef: ReturnType<typeof setInterval> | null = null;
 
-  onMount(() => {
-    const interval = setInterval(() => {
+  // Start/stop animation based on isIdle state
+  const startAnimation = () => {
+    if (intervalRef) return;
+    intervalRef = setInterval(() => {
       setFrame((f) => (f + 1) % SPINNER_FRAMES.length);
     }, 120);
+  };
 
-    onCleanup(() => clearInterval(interval));
+  const stopAnimation = () => {
+    if (intervalRef) {
+      clearInterval(intervalRef);
+      intervalRef = null;
+    }
+  };
+
+  onMount(() => {
+    // Only start animation if not idle
+    if (!props.isIdle) {
+      startAnimation();
+    }
+
+    onCleanup(() => stopAnimation());
+  });
+
+  // React to isIdle changes
+  createMemo(() => {
+    if (props.isIdle) {
+      stopAnimation();
+    } else {
+      startAnimation();
+    }
   });
 
   return (
@@ -171,7 +200,7 @@ export function Log(props: LogProps) {
               </Show>
             }
           >
-            <Spinner />
+            <Spinner isIdle={props.isIdle} />
           </Show>
         )}
       </Index>

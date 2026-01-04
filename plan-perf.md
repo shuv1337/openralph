@@ -45,7 +45,7 @@ Fix TUI freezing caused by memory leak and excessive CPU usage.
 - [x] Set `isIdle: true` when waiting for LLM response (after prompt sent, before events arrive)
 - [x] Set `isIdle: false` when tool events start arriving
 - [x] Skip elapsed timer updates when `isIdle: true` (reduce unnecessary re-renders)
-- [ ] Only animate spinner when `isIdle: false` (static spinner during idle waits)
+- [x] Only animate spinner when `isIdle: false` (static spinner during idle waits)
 
 ## Phase 6: Scrollbox Optimization
 
