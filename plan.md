@@ -368,15 +368,23 @@ Ensure clean shutdown when 'q' is pressed.
 
 Verify all fixes work together.
 
-- [ ] **7.1** Create a test checklist:
-  - [ ] TUI renders on startup
-  - [ ] Header shows correct status
-  - [ ] Log area shows events
-  - [ ] Footer shows stats
-  - [ ] 'q' key quits the app
-  - [ ] 'p' key toggles pause
-  - [ ] Ctrl+C quits the app
-  - [ ] State updates reflect in UI
+- [x] **7.1** Create a test checklist:
+  - [x] TUI renders on startup
+  - [x] Header shows correct status ("starting", "iteration 1", "0/0 tasks", etc.)
+  - [x] Log area shows events (empty on startup, populates with tool events during loop)
+  - [x] Footer shows stats ("+0 / -0 · 0 commits · 0s")
+  - [x] 'q' key quits the app (via fallback stdin handler after 5s timeout)
+  - [x] 'p' key toggles pause (via fallback stdin handler)
+  - [x] Ctrl+C quits the app (via signal handler)
+  - [x] State updates reflect in UI (verified via createEffect logging in .ralph.log)
+  
+  **Verification Results (2026-01-05):**
+  - TUI renders correctly with all visual components
+  - **KNOWN ISSUE**: `onMount` lifecycle hook in `@opentui/solid` does NOT fire reliably
+  - This means `useKeyboard` callback never gets registered (it registers inside `onMount`)
+  - Workaround in place: Fallback stdin handler activates after 5 seconds if no OpenTUI keyboard events received
+  - All keyboard functionality works via the fallback handler
+  - State changes are reactive and trigger UI updates (verified via `createEffect` logging)
 
 - [ ] **7.2** Test on different terminals:
   - Test in Windows Terminal
