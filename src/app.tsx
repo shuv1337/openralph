@@ -1,4 +1,5 @@
 import { render, useKeyboard, useRenderer } from "@opentui/solid";
+import type { KeyEvent } from "@opentui/core";
 import { createSignal, createEffect, onCleanup, onMount, Setter } from "solid-js";
 import { Header } from "./components/header";
 import { Log } from "./components/log";
@@ -255,7 +256,7 @@ export function App(props: AppProps) {
   // Keyboard handling
   // Task 3.1: Log to verify useKeyboard hook is being called
   log("app", "useKeyboard hook being registered (component body)");
-  useKeyboard((e) => {
+  useKeyboard((e: KeyEvent) => {
     // Task 3.1: This log verifies the callback is being invoked when keys are pressed
     log("app", "useKeyboard callback invoked", { 
       name: e.name, 
@@ -265,18 +266,19 @@ export function App(props: AppProps) {
       sequence: e.sequence,
       eventType: e.eventType,
     });
-    const key = String(e.name ?? "").toLowerCase();
+    // Task 3.5: Use e.name directly - KeyEvent type has .name as string property
+    const key = e.name.toLowerCase();
     log("app", "Keyboard event processed", { key });
 
     // p key: toggle pause
-    if (key === "p" && !(e as any).ctrl && !(e as any).meta) {
+    if (key === "p" && !e.ctrl && !e.meta) {
       log("app", "Toggle pause");
       togglePause();
       return;
     }
 
     // q key: quit
-    if (key === "q" && !(e as any).ctrl && !(e as any).meta) {
+    if (key === "q" && !e.ctrl && !e.meta) {
       log("app", "Quit via 'q' key");
       (renderer as any).destroy?.();
       props.onQuit();
@@ -284,7 +286,7 @@ export function App(props: AppProps) {
     }
 
     // Ctrl+C: quit
-    if (key === "c" && (e as any).ctrl) {
+    if (key === "c" && e.ctrl) {
       log("app", "Quit via Ctrl+C");
       (renderer as any).destroy?.();
       props.onQuit();

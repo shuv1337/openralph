@@ -165,10 +165,17 @@ The `useKeyboard` hook relies on `onMount` which may not be firing.
   - Matches OpenCode's pattern at line 169-170 of their app.tsx
   - TypeScript compiles successfully
 
-- [ ] **3.5** Fix keyboard event property access:
+- [x] **3.5** Fix keyboard event property access:
   - Current code uses `(e as any).key ?? (e as any).name ?? (e as any).sequence`
   - OpenTUI's `KeyEvent` type has `.name` property
   - Simplify to use `e.name` directly with proper typing
+  
+  **Completed (2025-01-05):**
+  - Added import: `import type { KeyEvent } from "@opentui/core";`
+  - Added explicit `KeyEvent` type annotation to the `useKeyboard` callback parameter
+  - Simplified key extraction from `String(e.name ?? "").toLowerCase()` to `e.name.toLowerCase()`
+  - Removed all `(e as any)` casts - now uses `e.ctrl`, `e.meta` directly with proper typing
+  - TypeScript compiles successfully with no errors
 
 ---
 
