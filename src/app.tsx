@@ -1,5 +1,5 @@
 import { render, useKeyboard, useRenderer } from "@opentui/solid";
-import { createSignal, createEffect, onCleanup, Setter } from "solid-js";
+import { createSignal, createEffect, onCleanup, onMount, Setter } from "solid-js";
 import { Header } from "./components/header";
 import { Log } from "./components/log";
 import { Footer } from "./components/footer";
@@ -157,6 +157,12 @@ export function App(props: AppProps) {
     });
   });
 
+  // Task 3.1: Verify that onMount fires - this is critical because useKeyboard 
+  // registers its callback inside onMount, not during component body execution.
+  onMount(() => {
+    log("app", "onMount fired - keyboard handlers should now be registered");
+  });
+
   // Export the state setter to module scope for external access.
   // We wrap setState to call requestRender() after updates - this helps ensure
   // the TUI refreshes on Windows where automatic redraw can sometimes stall.
@@ -218,9 +224,20 @@ export function App(props: AppProps) {
   };
 
   // Keyboard handling
+  // Task 3.1: Log to verify useKeyboard hook is being called
+  log("app", "useKeyboard hook being registered (component body)");
   useKeyboard((e) => {
-    const key = String((e as any).key ?? (e as any).name ?? (e as any).sequence ?? "").toLowerCase();
-    log("app", "Keyboard event", { event: e as any, key });
+    // Task 3.1: This log verifies the callback is being invoked when keys are pressed
+    log("app", "useKeyboard callback invoked", { 
+      name: e.name, 
+      ctrl: e.ctrl, 
+      meta: e.meta, 
+      shift: e.shift,
+      sequence: e.sequence,
+      eventType: e.eventType,
+    });
+    const key = String(e.name ?? "").toLowerCase();
+    log("app", "Keyboard event processed", { key });
 
     // p key: toggle pause
     if (key === "p" && !(e as any).ctrl && !(e as any).meta) {

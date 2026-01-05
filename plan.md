@@ -109,9 +109,18 @@ The `onMount` hook in Solid components isn't firing reliably, which breaks keybo
 
 The `useKeyboard` hook relies on `onMount` which may not be firing.
 
-- [ ] **3.1** Verify `useKeyboard` hook is being called:
+- [x] **3.1** Verify `useKeyboard` hook is being called:
   - Add logging inside the `useKeyboard` callback in `App` component
   - Check if the callback is ever invoked
+  
+  **Completed (2025-01-05):**
+  - Added log statement before `useKeyboard` call: `"useKeyboard hook being registered (component body)"`
+  - Added detailed logging inside the callback with all KeyEvent properties: `name`, `ctrl`, `meta`, `shift`, `sequence`, `eventType`
+  - Added `onMount` hook to verify mounting fires (critical because `useKeyboard` registers its handler inside `onMount`, not during component body)
+  - Simplified key extraction to use `e.name` directly since that's the correct property per OpenTUI's KeyEvent class
+  - TypeScript compiles successfully
+  
+  **Key finding from research:** `useKeyboard` in `@opentui/solid` registers the callback inside `onMount`, NOT immediately during component body execution. This means if `onMount` doesn't fire, keyboard events won't work. The added `onMount` log will help diagnose this.
 
 - [ ] **3.2** Check if keyboard events are reaching the renderer:
   - Add logging to verify `renderer.keyInput` exists
