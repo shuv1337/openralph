@@ -318,10 +318,17 @@ Ensure clean shutdown when 'q' is pressed.
   - **Added**: `renderer.setTerminalTitle("")` call before `destroy()` to reset window title (matches OpenCode pattern in exit.tsx)
   - Quit flow is correctly implemented and the chain executes as expected
 
-- [ ] **6.2** Ensure `renderer.destroy()` is called correctly:
+- [x] **6.2** Ensure `renderer.destroy()` is called correctly:
   - Current code: `(renderer as any).destroy?.()`
   - The `?` optional chaining may be hiding issues
   - Verify `destroy` method exists on renderer
+  
+  **Completed (2025-01-05):**
+  - Verified `renderer.destroy()` is now called directly without cast or optional chaining
+  - The fix was applied in task 6.1: removed `(renderer as any).destroy?.()` cast
+  - `destroy()` is properly typed on `CliRenderer` class from `@opentui/solid`
+  - Code at lines 315 and 325 in `src/app.tsx` calls `renderer.destroy()` directly
+  - TypeScript compiles successfully, confirming the method exists on the renderer type
 
 - [ ] **6.3** Add logging to quit flow:
   - Log when quit key is detected
