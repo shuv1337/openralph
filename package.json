@@ -6,7 +6,9 @@
     "ralph": "./bin/ralph.ts"
   },
   "scripts": {
-    "dev": "bun run src/index.ts",
+    "dev": "bun run --conditions=browser src/index.ts",
+    "build": "bun run scripts/build.ts",
+    "postbuild": "bun run scripts/install.ts",
     "typecheck": "bun x tsc --noEmit",
     "test": "bun test",
     "test:watch": "bun test --watch",

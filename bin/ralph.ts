@@ -1,54 +1,28 @@
 #!/usr/bin/env bun
 
 /*
- * Ralph CLI Entry Point - Direct Execution (No Subprocess)
- * ========================================================
+ * Ralph CLI Entry Point
+ * =====================
  * 
- * This entry point runs src/index.ts directly without spawning a subprocess.
- * Bun automatically applies the preload from bunfig.toml, so we don't need
- * any special handling for @opentui/solid.
+ * This entry point works in two modes:
  * 
- * PREVIOUS APPROACH (WHY IT WAS PROBLEMATIC):
- * -------------------------------------------
- * The old code spawned a subprocess with:
- *   spawn({ cmd: ["bun", "run", "src/index.ts", ...], stdio: "inherit" })
+ * 1. COMPILED MODE (bun build --compile):
+ *    - All imports are bundled, no chdir needed
+ *    - User's CWD is preserved (ralph runs in their directory)
  * 
- * This caused issues because:
- * 1. OpenTUI requires direct control of stdin/stdout for TUI rendering
- * 2. Even with stdio: "inherit", the parent process owns the TTY which
- *    interferes with raw mode keyboard handling
- * 3. Subprocess pattern creates process hierarchy that confuses signals
+ * 2. DEVELOPMENT MODE (bun run bin/ralph.ts):
+ *    - Requires bunfig.toml preload for @opentui/solid
+ *    - Uses dynamic import
  * 
- * CURRENT APPROACH:
- * -----------------
- * 1. Store user's CWD in RALPH_USER_CWD env var (src/index.ts chdir's to it)
- * 2. Change to package root (so relative imports resolve correctly)
- * 3. Dynamically import src/index.ts which runs the main logic
- * 
- * PRELOAD REQUIREMENT:
- * --------------------
- * The @opentui/solid preload is configured in bunfig.toml:
- *   preload = ["@opentui/solid/preload"]
- * 
- * Bun reads this automatically when running scripts from this package,
- * so no explicit preload handling is needed here.
+ * The RALPH_USER_CWD env var stores the user's working directory
+ * for both modes, allowing ralph to operate on their project.
  */
 
-import { dirname } from "path";
-import { fileURLToPath } from "url";
-
-// Get the package root (parent of bin directory)
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const packageRoot = dirname(__dirname);
-
-// Store the user's current working directory before changing dirs
-// src/index.ts will read this and chdir back to it
+// Store the user's current working directory
+// This is where ralph will look for tasks, git repo, etc.
 process.env.RALPH_USER_CWD = process.cwd();
 
-// Change to package root so relative imports in src/ resolve correctly
-process.chdir(packageRoot);
-
-// Import and run the main entry point directly
-// This executes in the same process - no subprocess needed
-await import("../src/index.ts");
+// Import and run the main entry point
+// In compiled mode: this is bundled inline
+// In dev mode: this is a dynamic import
+import "../src/index.ts";
