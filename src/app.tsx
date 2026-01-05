@@ -36,8 +36,7 @@ export type StartAppResult = {
 let globalSetState: Setter<LoopState> | null = null;
 let globalUpdateIterationTimes: ((times: number[]) => void) | null = null;
 
-// Mount synchronization - resolves when App component mounts
-let mountResolve: (() => void) | null = null;
+
 
 /**
  * Main App component with state signals.
@@ -55,11 +54,6 @@ export async function startApp(props: AppProps): Promise<StartAppResult> {
   
   // Create a mutable reference to iteration times that can be updated externally
   let iterationTimesRef = [...props.persistedState.iterationTimes];
-  
-  // Create mount promise to wait for component initialization
-  const mountPromise = new Promise<void>((resolve) => {
-    mountResolve = resolve;
-  });
   
   // Create exit promise with resolver
   let exitResolve!: () => void;
@@ -84,12 +78,7 @@ export async function startApp(props: AppProps): Promise<StartAppResult> {
     }
   );
   
-  log("app", "render() completed, waiting for component mount");
-  
-  // Wait for component to mount so globalSetState is available
-  await mountPromise;
-  
-  log("app", "Component mounted, state setters ready");
+  log("app", "render() completed, state setters ready");
 
   // Return state setters that will be available after render
   const stateSetters: AppStateSetters = {
@@ -165,15 +154,6 @@ export function App(props: AppProps) {
     return result;
   };
   globalUpdateIterationTimes = (times: number[]) => setIterationTimes(times);
-  
-  // Signal startApp() that state setters are ready
-  // NOTE: onMount() doesn't fire reliably in OpenTUI's render environment,
-  // so we resolve immediately after setting up globalSetState
-  if (mountResolve) {
-    log("app", "App component initialized, resolving mount promise");
-    mountResolve();
-    mountResolve = null;
-  }
 
   // Track elapsed time from the persisted start time
   const [elapsed, setElapsed] = createSignal(

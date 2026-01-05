@@ -59,10 +59,17 @@ The `onMount` hook in Solid components isn't firing reliably, which breaks keybo
   7. **`useKittyKeyboard: {}` in render options** - At line 152, enables keyboard protocol
   8. **Trusts Solid reactivity** - No manual `renderer.requestRender()` calls for state updates
 
-- [ ] **2.2** Remove the `mountPromise` pattern in `src/app.tsx`:
+- [x] **2.2** Remove the `mountPromise` pattern in `src/app.tsx`:
   - The current code resolves `mountPromise` synchronously during component body
   - This is a workaround that doesn't actually wait for `onMount`
   - Remove `mountResolve` and `mountPromise` variables
+  
+  **Completed (2025-01-05):**
+  - Removed `mountResolve` module-level variable
+  - Removed `mountPromise` creation in `startApp()`
+  - Removed `await mountPromise` call
+  - Removed mount resolution logic in `App` component body
+  - Now follows OpenCode pattern: state setters available immediately after `render()` completes
 
 - [ ] **2.3** Refactor `startApp()` to not depend on mount timing:
   - Return `stateSetters` immediately after render() completes
