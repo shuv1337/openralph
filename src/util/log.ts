@@ -1,26 +1,44 @@
 /**
  * Debug logging utility for ralph
- * Logs are written to .ralph.log file
+ * 
+ * Logs are written to XDG state directory for persistence and central monitoring.
+ * Default: ~/.local/state/ralph/logs/ralph-YYYY-MM-DD.log
+ * Override: RALPH_LOG_DIR environment variable
  */
 import { appendFileSync, writeFileSync, existsSync } from "node:fs";
+import { getRollingLogPath, ensureLogDir } from "./paths.js";
 
+/**
+ * Get the current log file path.
+ * Uses rolling dated logs in XDG state directory.
+ */
+function getLogFile(): string {
+  ensureLogDir();
+  return getRollingLogPath();
+}
+
+/** @deprecated Use getLogFile() - kept for backward compatibility */
 export const LOG_FILE = ".ralph.log";
 
 let initialized = false;
+let currentLogFile: string | null = null;
 let memoryLogInterval: ReturnType<typeof setInterval> | null = null;
 
 /**
  * Initialize the log file. Call with reset=true to clear existing logs.
  */
 export function initLog(reset: boolean = false): void {
-  if (reset || !existsSync(LOG_FILE)) {
+  currentLogFile = getLogFile();
+  
+  if (reset || !existsSync(currentLogFile)) {
     writeFileSync(
-      LOG_FILE,
-      `=== Ralph Log Started: ${new Date().toISOString()} ===\n`
+      currentLogFile,
+      `=== Ralph Log Started: ${new Date().toISOString()} ===\n` +
+      `=== Log Location: ${currentLogFile} ===\n`
     );
   } else {
     appendFileSync(
-      LOG_FILE,
+      currentLogFile,
       `\n=== Ralph Session Resumed: ${new Date().toISOString()} ===\n`
     );
   }
@@ -28,11 +46,21 @@ export function initLog(reset: boolean = false): void {
 }
 
 /**
- * Log a message with timestamp to .ralph.log
+ * Log a message with timestamp
  */
 export function log(category: string, message: string, data?: unknown): void {
   if (!initialized) {
     initLog(false);
+  }
+
+  // Check if date rolled over (new day = new log file)
+  const newLogFile = getLogFile();
+  if (currentLogFile !== newLogFile) {
+    currentLogFile = newLogFile;
+    appendFileSync(
+      currentLogFile,
+      `\n=== Ralph Log Continued: ${new Date().toISOString()} ===\n`
+    );
   }
 
   const timestamp = new Date().toISOString();
@@ -46,7 +74,7 @@ export function log(category: string, message: string, data?: unknown): void {
   }
 
   try {
-    appendFileSync(LOG_FILE, line + "\n");
+    appendFileSync(currentLogFile!, line + "\n");
   } catch {
     // Silently fail if we can't write logs
   }
@@ -61,7 +89,7 @@ function formatBytes(bytes: number): string {
 }
 
 /**
- * Log current memory usage to .ralph.log
+ * Log current memory usage
  * Logs heap used, heap total, RSS, and external memory.
  */
 export function logMemory(label?: string): void {
@@ -99,4 +127,11 @@ export function stopMemoryLogging(): void {
     memoryLogInterval = null;
     logMemory("Periodic memory logging stopped");
   }
+}
+
+/**
+ * Get the current log file path (for external monitoring tools)
+ */
+export function getCurrentLogPath(): string {
+  return currentLogFile || getLogFile();
 }
