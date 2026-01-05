@@ -18,7 +18,7 @@ The `bin/ralph.ts` file spawns a child process which creates stdin/stdout inheri
   - Copy current implementation to a comment block for reference
   - Document why subprocess approach was originally used (preload requirement)
 
-- [ ] **1.2** Refactor `bin/ralph.ts` to run directly without subprocess:
+- [x] **1.2** Refactor `bin/ralph.ts` to run directly without subprocess:
   - Remove `spawn()` call entirely
   - Import and call the main entry point directly
   - Example pattern from opencode: direct invocation without subprocess
