@@ -247,6 +247,29 @@ async function main() {
       log("main", "cleanup() done");
     }
 
+    // Fallback quit handler (useful if TUI key events fail)
+    let quitRequested = false;
+    async function requestQuit(source: string, payload?: unknown) {
+      if (quitRequested) return;
+      quitRequested = true;
+      log("main", "Quit requested", { source, payload });
+      await cleanup();
+      process.exit(0);
+    }
+
+    if (process.stdin.isTTY) {
+      process.stdin.on("data", (data) => {
+        // Log raw stdin bytes; helps debug Windows key handling
+        const text = data.toString("utf8");
+        log("main", "stdin", { length: data.length, text: JSON.stringify(text) });
+
+        const trimmed = text.replace(/\r|\n/g, "");
+        if (trimmed.toLowerCase() === "q") {
+          requestQuit("stdin", { text: trimmed });
+        }
+      });
+    }
+
     // Handle SIGINT (Ctrl+C) and SIGTERM signals for graceful shutdown
     process.on("SIGINT", async () => {
       log("main", "SIGINT received");
@@ -293,7 +316,7 @@ async function main() {
     log("main", "Starting loop");
     runLoop(loopOptions, stateToUse, {
       onIterationStart: (iteration) => {
-        // Update state.iteration and status to running
+        log("main", "onIterationStart", { iteration });
         stateSetters.setState((prev) => ({
           ...prev,
           status: "running",
@@ -352,7 +375,7 @@ async function main() {
         stateSetters.updateIterationTimes([...stateToUse.iterationTimes]);
       },
       onTasksUpdated: (done, total) => {
-        // Update state.tasksComplete and state.totalTasks
+        log("main", "onTasksUpdated", { done, total });
         stateSetters.setState((prev) => ({
           ...prev,
           tasksComplete: done,

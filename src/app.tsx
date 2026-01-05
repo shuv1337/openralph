@@ -1,5 +1,5 @@
 import { render, useKeyboard, useRenderer } from "@opentui/solid";
-import { createSignal, onCleanup, onMount, Setter } from "solid-js";
+import { createSignal, onCleanup, Setter } from "solid-js";
 import { Header } from "./components/header";
 import { Log } from "./components/log";
 import { Footer } from "./components/footer";
@@ -112,9 +112,24 @@ export async function startApp(props: AppProps): Promise<StartAppResult> {
   return { exitPromise, stateSetters };
 }
 
+let rendererInfoLogged = false;
+
 export function App(props: AppProps) {
   // Get renderer for cleanup on quit
   const renderer = useRenderer();
+
+  if (!rendererInfoLogged) {
+    rendererInfoLogged = true;
+    try {
+      const proto = Object.getPrototypeOf(renderer as any);
+      log("app", "renderer", {
+        keys: Object.keys(renderer as any),
+        protoKeys: proto ? Object.getOwnPropertyNames(proto) : [],
+      });
+    } catch (e) {
+      log("app", "renderer", { error: String(e) });
+    }
+  }
   
   // State signal for loop state
   // Initialize iteration to length + 1 since we're about to start the next iteration
@@ -136,17 +151,29 @@ export function App(props: AppProps) {
   );
 
   // Export the state setter to module scope for external access
-  globalSetState = setState;
+  globalSetState = (update) => {
+    const result = setState(update);
+    const s = state();
+    log("app", "globalSetState", {
+      status: s.status,
+      iteration: s.iteration,
+      tasksComplete: s.tasksComplete,
+      totalTasks: s.totalTasks,
+    });
+    // Force renderer to refresh in case automatic redraw stalls on Windows
+    renderer.requestRender?.();
+    return result;
+  };
   globalUpdateIterationTimes = (times: number[]) => setIterationTimes(times);
   
-  // Signal that component is mounted and state setters are ready
-  onMount(() => {
-    log("app", "App component mounted");
-    if (mountResolve) {
-      mountResolve();
-      mountResolve = null; // Clean up
-    }
-  });
+  // Signal startApp() that state setters are ready
+  // NOTE: onMount() doesn't fire reliably in OpenTUI's render environment,
+  // so we resolve immediately after setting up globalSetState
+  if (mountResolve) {
+    log("app", "App component initialized, resolving mount promise");
+    mountResolve();
+    mountResolve = null;
+  }
 
   // Track elapsed time from the persisted start time
   const [elapsed, setElapsed] = createSignal(
@@ -198,27 +225,28 @@ export function App(props: AppProps) {
 
   // Keyboard handling
   useKeyboard((e) => {
-    log("app", "Keyboard event", { name: e.name, ctrl: e.ctrl, meta: e.meta });
-    
+    const key = String((e as any).key ?? (e as any).name ?? (e as any).sequence ?? "").toLowerCase();
+    log("app", "Keyboard event", { event: e as any, key });
+
     // p key: toggle pause
-    if (e.name === "p" && !e.ctrl && !e.meta) {
+    if (key === "p" && !(e as any).ctrl && !(e as any).meta) {
       log("app", "Toggle pause");
       togglePause();
       return;
     }
 
     // q key: quit
-    if (e.name === "q" && !e.ctrl && !e.meta) {
+    if (key === "q" && !(e as any).ctrl && !(e as any).meta) {
       log("app", "Quit via 'q' key");
-      renderer.destroy();
+      (renderer as any).destroy?.();
       props.onQuit();
       return;
     }
 
     // Ctrl+C: quit
-    if (e.name === "c" && e.ctrl) {
+    if (key === "c" && (e as any).ctrl) {
       log("app", "Quit via Ctrl+C");
-      renderer.destroy();
+      (renderer as any).destroy?.();
       props.onQuit();
       return;
     }

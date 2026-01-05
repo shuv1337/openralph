@@ -4,3 +4,5 @@ node_modules/
 .ralph-pause
 .ralph-done
 .ralph.log
+
+.reference/

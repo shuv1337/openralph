@@ -52,13 +52,21 @@ export async function runLoop(
   
   let server: { url: string; close(): void } | null = null;
 
+  function createTimeoutlessFetch() {
+    return (req: any) => {
+      // @ts-ignore - Bun Request supports .timeout
+      req.timeout = false;
+      return fetch(req);
+    };
+  }
+
   try {
     // Start opencode server
     log("loop", "Creating opencode server...");
     server = await createOpencodeServer({ signal, port: 4190 });
     log("loop", "Server created", { url: server.url });
     
-    const client = createOpencodeClient({ baseUrl: server.url });
+    const client = createOpencodeClient({ baseUrl: server.url, fetch: createTimeoutlessFetch() } as any);
     log("loop", "Client created");
 
     // Initialize iteration counter from persisted state
