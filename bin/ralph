@@ -1,0 +1,134 @@
+#!/usr/bin/env node
+/**
+ * Ralph CLI Launcher
+ *
+ * This is a thin JavaScript wrapper that finds and executes the correct
+ * platform-specific binary for the current OS/architecture.
+ *
+ * The binary is located in one of the optional dependency packages:
+ *   - ralph-opencode-darwin-arm64
+ *   - ralph-opencode-darwin-x64
+ *   - ralph-opencode-linux-arm64
+ *   - ralph-opencode-linux-x64
+ *   - ralph-opencode-windows-x64
+ *
+ * Environment variables:
+ *   RALPH_BIN_PATH - Override path to the ralph binary
+ */
+
+const childProcess = require("child_process");
+const fs = require("fs");
+const path = require("path");
+const os = require("os");
+
+/**
+ * Run the binary with inherited stdio
+ */
+function run(target) {
+  const result = childProcess.spawnSync(target, process.argv.slice(2), {
+    stdio: "inherit",
+  });
+
+  if (result.error) {
+    console.error(result.error.message);
+    process.exit(1);
+  }
+
+  const code = typeof result.status === "number" ? result.status : 0;
+  process.exit(code);
+}
+
+// Check for environment variable override
+const envPath = process.env.RALPH_BIN_PATH;
+if (envPath) {
+  run(envPath);
+}
+
+// Get the real path of this script (resolves symlinks)
+const scriptPath = fs.realpathSync(__filename);
+const scriptDir = path.dirname(scriptPath);
+
+// Map OS and architecture to package naming conventions
+const platformMap = {
+  darwin: "darwin",
+  linux: "linux",
+  win32: "windows",
+};
+
+const archMap = {
+  x64: "x64",
+  arm64: "arm64",
+};
+
+let platform = platformMap[os.platform()];
+if (!platform) {
+  platform = os.platform();
+}
+
+let arch = archMap[os.arch()];
+if (!arch) {
+  arch = os.arch();
+}
+
+// Construct package and binary names
+const packageBase = "ralph-opencode-" + platform + "-" + arch;
+const binaryName = platform === "windows" ? "ralph.exe" : "ralph";
+
+/**
+ * Search for the binary in node_modules hierarchy
+ */
+function findBinary(startDir) {
+  let current = startDir;
+
+  for (;;) {
+    const modules = path.join(current, "node_modules");
+
+    if (fs.existsSync(modules)) {
+      const entries = fs.readdirSync(modules);
+
+      for (const entry of entries) {
+        // Match package name (could have version suffix in some package managers)
+        if (!entry.startsWith(packageBase)) {
+          continue;
+        }
+
+        const candidate = path.join(modules, entry, "bin", binaryName);
+        if (fs.existsSync(candidate)) {
+          return candidate;
+        }
+      }
+    }
+
+    // Move up to parent directory
+    const parent = path.dirname(current);
+    if (parent === current) {
+      // Reached filesystem root
+      return;
+    }
+    current = parent;
+  }
+}
+
+// Try to find the binary
+const resolved = findBinary(scriptDir);
+
+if (!resolved) {
+  console.error(
+    "Error: Could not find the ralph binary for your platform.\n\n" +
+      "It seems that your package manager failed to install the correct version\n" +
+      "of the ralph CLI for your platform (" +
+      platform +
+      "-" +
+      arch +
+      ").\n\n" +
+      'You can try manually installing the "' +
+      packageBase +
+      '" package:\n\n' +
+      "  npm install " +
+      packageBase +
+      "\n"
+  );
+  process.exit(1);
+}
+
+run(resolved);

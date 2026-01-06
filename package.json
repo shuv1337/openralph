@@ -1,14 +1,15 @@
 {
-  "name": "opencode-ralph",
-  "version": "0.0.1",
+  "name": "ralph-opencode",
+  "version": "0.1.0",
   "type": "module",
   "bin": {
-    "ralph": "./bin/ralph.ts"
+    "ralph": "./bin/ralph"
   },
   "scripts": {
     "dev": "bun run --conditions=browser src/index.ts",
     "build": "bun run scripts/build.ts",
-    "postbuild": "bun run scripts/install.ts",
+    "build:single": "bun run scripts/build.ts --single",
+    "publish": "bun run scripts/publish.ts",
     "typecheck": "bun x tsc --noEmit",
     "test": "bun test",
     "test:watch": "bun test --watch",

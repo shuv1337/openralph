@@ -1,0 +1,67 @@
+name: publish
+
+on:
+  push:
+    branches:
+      - dev
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Version bump type"
+        required: false
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+      version:
+        description: "Override version (optional, e.g. 1.2.3)"
+        required: false
+        type: string
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Publish to npm
+        run: bun run scripts/publish.ts
+        env:
+          RALPH_BUMP: ${{ inputs.bump }}
+          RALPH_VERSION: ${{ inputs.version }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Summary
+        run: |
+          echo "## Publish Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -n "${{ inputs.bump }}" ]; then
+            echo "- **Type**: Production release (${{ inputs.bump }} bump)" >> $GITHUB_STEP_SUMMARY
+          elif [ -n "${{ inputs.version }}" ]; then
+            echo "- **Type**: Production release (version ${{ inputs.version }})" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- **Type**: Preview release" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "- **Install**: \`npm install -g ralph-opencode\`" >> $GITHUB_STEP_SUMMARY
