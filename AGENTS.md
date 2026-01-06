@@ -89,3 +89,21 @@ useKeyboard((e: KeyEvent) => {
 3. **TTY checks**: Always check `process.stdin.isTTY` before calling `setRawMode(true)`.
 
 4. **Terminal title reset**: Call `renderer.setTerminalTitle("")` before `renderer.destroy()` to reset the window title on exit.
+
+## NPM Publishing
+
+To release a new version to npm, run:
+
+```bash
+gh workflow run publish.yml --field bump=patch
+```
+
+Options for `bump`:
+- `patch` - Bug fixes (0.1.0 -> 0.1.1)
+- `minor` - New features (0.1.0 -> 0.2.0)
+- `major` - Breaking changes (0.1.0 -> 1.0.0)
+
+The workflow will automatically:
+1. Build binaries for all platforms (darwin/linux/windows, arm64/x64)
+2. Publish platform-specific packages (`ralph-cli-{platform}-{arch}`)
+3. Publish the main wrapper package (`ralph-cli`)
