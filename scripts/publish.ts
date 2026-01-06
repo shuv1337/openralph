@@ -142,7 +142,7 @@ await $`cp ./LICENSE ./dist/${mainPkgDirName}/LICENSE`;
 const mainPackageJson = {
   name: PACKAGE_NAME,
   version: version,
-  description: "Ralph - AI coding assistant CLI",
+  description: "Ralph Driven Development using OpenCode SDK and OpenTUI",
   bin: {
     ralph: "./bin/ralph",
   },
