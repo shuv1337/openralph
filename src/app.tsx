@@ -10,6 +10,7 @@ import { DialogProvider, DialogStack, useDialog, useInputFocus } from "./context
 import { CommandProvider, useCommand, type CommandOption } from "./context/CommandContext";
 import { DialogSelect, type SelectOption } from "./ui/DialogSelect";
 import { DialogAlert } from "./ui/DialogAlert";
+import { DialogPrompt } from "./ui/DialogPrompt";
 import { keymap, matchesKeybind, type KeybindDef } from "./lib/keymap";
 import type { LoopState, LoopOptions, PersistedState } from "./state";
 import { detectInstalledTerminals, launchTerminal, getAttachCommand as getAttachCmdFromTerminal, type KnownTerminal } from "./lib/terminal-launcher";
@@ -513,6 +514,80 @@ function AppContent(props: AppContentProps) {
   };
 
   /**
+   * Handle P key press in debug mode: open prompt dialog for manual input.
+   * Only available in debug mode with an active session.
+   */
+  const handleDebugPromptInput = () => {
+    // Only available in debug mode
+    if (!props.options.debug) {
+      return;
+    }
+
+    // Check for active session
+    const currentState = props.state();
+    if (!currentState.sessionId) {
+      dialog.show(() => (
+        <DialogAlert
+          title="No Active Session"
+          message="Create a session first by pressing 'N'."
+          variant="warning"
+        />
+      ));
+      return;
+    }
+
+    log("app", "Debug mode: opening prompt dialog via P key");
+
+    dialog.show(() => (
+      <DialogPrompt
+        title="Send Prompt"
+        placeholder="Enter your message..."
+        onSubmit={async (value) => {
+          if (!value.trim()) {
+            return;
+          }
+          
+          if (globalSendMessage) {
+            log("app", "Debug mode: sending prompt", { message: value.slice(0, 50) });
+            try {
+              await globalSendMessage(value);
+              // Update status to show we're running
+              props.setState((prev) => ({
+                ...prev,
+                status: "running",
+                isIdle: false,
+              }));
+            } catch (error) {
+              const errorMsg = error instanceof Error ? error.message : String(error);
+              log("app", "Debug mode: failed to send prompt", { error: errorMsg });
+              dialog.show(() => (
+                <DialogAlert
+                  title="Send Failed"
+                  message={`Failed to send prompt:\n\n${errorMsg}`}
+                  variant="error"
+                />
+              ));
+            }
+          } else {
+            log("app", "Debug mode: no sendMessage function available");
+            dialog.show(() => (
+              <DialogAlert
+                title="Session Not Ready"
+                message="The session is not ready to receive messages yet."
+                variant="warning"
+              />
+            ));
+          }
+        }}
+        onCancel={() => {
+          log("app", "Debug mode: prompt dialog cancelled");
+        }}
+        borderColor={colors.purple}
+      />
+    ));
+  };
+
+  /**
    * Handle T key press: launch terminal with attach command or show config dialog.
    * Requires an active session. Uses preferred terminal if configured.
    */
@@ -664,8 +739,14 @@ function AppContent(props: AppContentProps) {
       return;
     }
 
-    // p key: toggle pause (only when no modifiers)
+    // p key: toggle pause OR prompt input (debug mode)
     if (key === "p" && !e.ctrl && !e.meta && !e.shift) {
+      if (props.options.debug) {
+        // In debug mode, p opens prompt input dialog
+        handleDebugPromptInput();
+        return;
+      }
+      // In normal mode, p toggles pause
       props.togglePause();
       return;
     }

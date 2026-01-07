@@ -329,7 +329,7 @@
 
 #### Debug Key Handlers
 - [x] Add N key handler for "new session" in debug mode
-- [ ] Add P key handler for "prompt input" in debug mode
+- [x] Add P key handler for "prompt input" in debug mode
 - [ ] Add Q key handler for quit (shared with normal mode)
 
 #### Debug Session Creation
