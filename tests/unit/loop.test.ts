@@ -138,6 +138,25 @@ describe("buildPrompt", () => {
       expect(result).toBe("Explicit prompt plan.md");
     });
 
+    it("should read content from --prompt-file when --prompt is not provided", async () => {
+      // Create a temp file with custom prompt content
+      const tempFile = `/tmp/test-prompt-${Date.now()}.md`;
+      const promptContent = "Custom file prompt: process {plan} and {{PLAN_FILE}} files.";
+      await Bun.write(tempFile, promptContent);
+
+      try {
+        const options = createOptions({
+          prompt: undefined,
+          promptFile: tempFile,
+        });
+        const result = await buildPrompt(options);
+        expect(result).toBe("Custom file prompt: process plan.md and plan.md files.");
+      } finally {
+        // Clean up temp file
+        await Bun.file(tempFile).delete?.();
+      }
+    });
+
     it("should fall back to DEFAULT_PROMPT when prompt-file doesn't exist", async () => {
       const options = createOptions({
         prompt: undefined,

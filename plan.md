@@ -75,10 +75,10 @@
 - [x] Add example content with `{{PLAN_FILE}}` placeholder
 
 #### Tests
-- [ ] Add test for `--prompt` string taking precedence
-- [ ] Add test for `--prompt-file` being read correctly
-- [ ] Add test for placeholder replacement in prompt file
-- [ ] Add test for fallback to DEFAULT_PROMPT when file missing
+- [x] Add test for `--prompt` string taking precedence
+- [x] Add test for `--prompt-file` being read correctly
+- [x] Add test for placeholder replacement in prompt file
+- [x] Add test for fallback to DEFAULT_PROMPT when file missing
 
 ### 1.3 Error Retry with Exponential Backoff
 
