@@ -3,12 +3,14 @@ import {
   useContext,
   createSignal,
   createMemo,
+  createEffect,
   onMount,
   JSX,
 } from "solid-js";
 import type { Accessor } from "solid-js";
 import { resolveTheme, type Theme, type ThemeMode } from "../lib/theme-resolver";
 import { themeNames, defaultTheme } from "../lib/themes/index";
+import { setCurrentTheme } from "../lib/theme-colors";
 import { log } from "../util/log";
 
 /**
@@ -74,6 +76,11 @@ export function ThemeProvider(props: ThemeProviderProps) {
   // Derived resolved theme - recomputes when name or mode changes
   const theme = createMemo(() => {
     return resolveTheme(themeName(), themeMode());
+  });
+
+  // Sync theme state with color accessor module for non-reactive usage
+  createEffect(() => {
+    setCurrentTheme(themeName(), themeMode());
   });
 
   // Read theme preference from OpenCode state on mount

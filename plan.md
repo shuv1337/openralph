@@ -466,7 +466,7 @@
 
 #### Colors Migration
 - [x] Preserve existing `colors.ts` values as fallback
-- [ ] Create theme-based color accessor functions
+- [x] Create theme-based color accessor functions
 - [ ] Migrate components from direct colors import to theme accessor
 - [ ] Remove direct color imports after migration complete
 
