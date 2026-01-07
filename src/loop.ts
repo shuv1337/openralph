@@ -360,6 +360,14 @@ export async function runLoop(
         });
       };
 
+      // Call onSessionCreated callback with session info
+      callbacks.onSessionCreated?.({
+        sessionId,
+        serverUrl: server!.url,
+        attached: server!.attached,
+        sendMessage,
+      });
+
       // Subscribe to events - the SSE connection is established when we start iterating
       log("loop", "Subscribing to events...");
       const events = await client.event.subscribe();
