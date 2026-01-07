@@ -407,7 +407,7 @@
 - [x] Copy `catppuccin-latte.json` theme file
 - [x] Copy `catppuccin-mocha.json` theme file
 - [x] Copy `cobalt2.json` theme file
-- [ ] Copy `cursor.json` theme file
+- [x] Copy `cursor.json` theme file
 - [ ] Copy `dracula.json` theme file
 - [ ] Copy `everforest.json` theme file
 - [ ] Copy `flexoki.json` theme file
