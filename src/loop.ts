@@ -146,12 +146,23 @@ async function tryConnectToExistingServer(url: string): Promise<boolean> {
 /**
  * Get or create an opencode server.
  * First tries to attach to an existing server, then starts a new one if needed.
+ * If serverUrl is provided, connects to that external server directly.
  */
 async function getOrCreateOpencodeServer(options: {
   signal?: AbortSignal;
   port?: number;
   hostname?: string;
+  serverUrl?: string;
+  serverTimeoutMs?: number;
 }): Promise<{ url: string; close(): void; attached: boolean }> {
+  // If explicit server URL provided, connect to it directly
+  if (options.serverUrl) {
+    return connectToExternalServer(options.serverUrl, {
+      timeoutMs: options.serverTimeoutMs,
+      signal: options.signal,
+    });
+  }
+
   const hostname = options.hostname || DEFAULT_HOSTNAME;
   const port = options.port || DEFAULT_PORT;
   const url = `http://${hostname}:${port}`;

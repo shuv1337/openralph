@@ -356,9 +356,9 @@ Allow Ralph to connect to an existing/running OpenCode server via `--server` URL
 
 ### 5.1 Update function signature
 
-- [ ] **5.1.1** Open `src/loop.ts`
-- [ ] **5.1.2** Locate `getOrCreateOpencodeServer` function (around line 35)
-- [ ] **5.1.3** Update the options parameter type to add:
+- [x] **5.1.1** Open `src/loop.ts`
+- [x] **5.1.2** Locate `getOrCreateOpencodeServer` function (around line 35)
+- [x] **5.1.3** Update the options parameter type to add:
   ```typescript
   async function getOrCreateOpencodeServer(options: {
     signal?: AbortSignal;
@@ -368,11 +368,11 @@ Allow Ralph to connect to an existing/running OpenCode server via `--server` URL
     serverTimeoutMs?: number;  // ADD THIS
   }): Promise<{ url: string; close(): void; attached: boolean }> {
   ```
-- [ ] **5.1.4** Run `bun run typecheck` to verify no errors
+- [x] **5.1.4** Run `bun run typecheck` to verify no errors
 
 ### 5.2 Add external server connection logic
 
-- [ ] **5.2.1** Add the following code at the start of `getOrCreateOpencodeServer` function body (before existing logic):
+- [x] **5.2.1** Add the following code at the start of `getOrCreateOpencodeServer` function body (before existing logic):
   ```typescript
   // If explicit server URL provided, connect to it directly
   if (options.serverUrl) {
@@ -382,8 +382,8 @@ Allow Ralph to connect to an existing/running OpenCode server via `--server` URL
     });
   }
   ```
-- [ ] **5.2.2** Run `bun run typecheck` to verify no errors
-- [ ] **5.2.3** Run `bun test` to verify all existing tests still pass
+- [x] **5.2.2** Run `bun run typecheck` to verify no errors
+- [x] **5.2.3** Run `bun test` to verify all existing tests still pass
 
 ---
 
