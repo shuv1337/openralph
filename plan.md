@@ -668,7 +668,7 @@
 - [x] Add tests for `parsePlanTasks()` function
 - [x] Add tests for `detectClipboardTool()` function
 - [x] Add tests for `detectInstalledTerminals()` function
-- [ ] Add tests for `resolveTheme()` function
+- [x] Add tests for `resolveTheme()` function
 
 ### Integration Tests
 - [ ] Test loop with external server attachment
