@@ -328,7 +328,7 @@
 - [x] Set initial state to idle in debug mode
 
 #### Debug Key Handlers
-- [ ] Add N key handler for "new session" in debug mode
+- [x] Add N key handler for "new session" in debug mode
 - [ ] Add P key handler for "prompt input" in debug mode
 - [ ] Add Q key handler for quit (shared with normal mode)
 

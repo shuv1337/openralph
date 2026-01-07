@@ -17,6 +17,7 @@ import { loadConfig, setPreferredTerminal } from "./lib/config";
 import { colors } from "./components/colors";
 import { calculateEta } from "./util/time";
 import { log } from "./util/log";
+import { createDebugSession } from "./loop";
 
 type AppProps = {
   options: LoopOptions;
@@ -235,6 +236,7 @@ export function App(props: AppProps) {
         <AppContent
           state={state}
           setState={setState}
+          options={props.options}
           commandMode={commandMode}
           setCommandMode={setCommandMode}
           setCommandInput={setCommandInput}
@@ -258,6 +260,7 @@ export function App(props: AppProps) {
 type AppContentProps = {
   state: () => LoopState;
   setState: Setter<LoopState>;
+  options: LoopOptions;
   commandMode: () => boolean;
   setCommandMode: (v: boolean) => void;
   setCommandInput: (v: string) => void;
@@ -439,6 +442,77 @@ function AppContent(props: AppContentProps) {
   };
 
   /**
+   * Handle N key press in debug mode: create a new session.
+   * Only available in debug mode. Creates a session and stores it in state.
+   */
+  const handleDebugNewSession = async () => {
+    // Only available in debug mode
+    if (!props.options.debug) {
+      return;
+    }
+
+    // Check if session already exists
+    const currentState = props.state();
+    const existingSessionId = currentState.sessionId;
+    if (existingSessionId) {
+      dialog.show(() => (
+        <DialogAlert
+          title="Session Exists"
+          message={`A session is already active (${existingSessionId.slice(0, 8)}...).\n\nUse ':' to send messages to the existing session.`}
+          variant="info"
+        />
+      ));
+      return;
+    }
+
+    log("app", "Debug mode: creating new session via N key");
+
+    try {
+      const session = await createDebugSession({
+        serverUrl: props.options.serverUrl,
+        serverTimeoutMs: props.options.serverTimeoutMs,
+        model: props.options.model,
+        agent: props.options.agent,
+      });
+
+      // Update state with session info
+      props.setState((prev) => ({
+        ...prev,
+        sessionId: session.sessionId,
+        serverUrl: session.serverUrl,
+        attached: session.attached,
+        status: "idle", // Ready for input
+      }));
+
+      // Store sendMessage function for steering mode
+      globalSendMessage = session.sendMessage;
+
+      log("app", "Debug mode: session created successfully", { 
+        sessionId: session.sessionId 
+      });
+
+      dialog.show(() => (
+        <DialogAlert
+          title="Session Created"
+          message={`Session ID: ${session.sessionId.slice(0, 8)}...\n\nUse ':' to send messages to the session.`}
+          variant="info"
+        />
+      ));
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      log("app", "Debug mode: failed to create session", { error: errorMsg });
+      
+      dialog.show(() => (
+        <DialogAlert
+          title="Session Creation Failed"
+          message={`Failed to create session:\n\n${errorMsg}`}
+          variant="error"
+        />
+      ));
+    }
+  };
+
+  /**
    * Handle T key press: launch terminal with attach command or show config dialog.
    * Requires an active session. Uses preferred terminal if configured.
    */
@@ -600,6 +674,14 @@ function AppContent(props: AppContentProps) {
     if (matchesKeybind(e, keymap.terminalConfig)) {
       handleTerminalLaunch();
       return;
+    }
+
+    // n key: create new session (debug mode only)
+    if (key === "n" && !e.ctrl && !e.meta && !e.shift) {
+      if (props.options.debug) {
+        handleDebugNewSession();
+        return;
+      }
     }
 
     // q key: quit

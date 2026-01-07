@@ -212,6 +212,101 @@ async function getOrCreateOpencodeServer(options: {
 }
 
 /**
+ * Debug session state - holds server and client for debug mode.
+ * Cached across createDebugSession calls to avoid recreating server.
+ */
+let debugServer: { url: string; close(): void; attached: boolean } | null = null;
+let debugClient: ReturnType<typeof createOpencodeClient> | null = null;
+
+/**
+ * Create a new session in debug mode.
+ * Initializes server/client on first call, then creates a session.
+ * Returns session info for use in the TUI.
+ */
+export async function createDebugSession(options: {
+  serverUrl?: string;
+  serverTimeoutMs?: number;
+  model: string;
+  agent?: string;
+}): Promise<{
+  sessionId: string;
+  serverUrl: string;
+  attached: boolean;
+  sendMessage: (message: string) => Promise<void>;
+}> {
+  // Initialize server and client if not already created
+  if (!debugServer || !debugClient) {
+    log("loop", "Debug mode: initializing server/client...");
+    debugServer = await getOrCreateOpencodeServer({
+      port: DEFAULT_PORT,
+      serverUrl: options.serverUrl,
+      serverTimeoutMs: options.serverTimeoutMs,
+    });
+    
+    const createTimeoutlessFetch = () => {
+      return (req: any) => {
+        req.timeout = false;
+        return fetch(req);
+      };
+    };
+    
+    debugClient = createOpencodeClient({ 
+      baseUrl: debugServer.url, 
+      fetch: createTimeoutlessFetch() 
+    } as any);
+    
+    log("loop", "Debug mode: server/client ready", { url: debugServer.url });
+  }
+
+  // Create a new session
+  log("loop", "Debug mode: creating session...");
+  const sessionResult = await debugClient.session.create();
+  if (!sessionResult.data) {
+    throw new Error("Failed to create debug session");
+  }
+  
+  const sessionId = sessionResult.data.id;
+  log("loop", "Debug mode: session created", { sessionId });
+
+  // Parse model for sendMessage
+  const { providerID, modelID } = parseModel(options.model);
+  const client = debugClient;
+
+  // Create sendMessage function
+  const sendMessage = async (message: string): Promise<void> => {
+    log("loop", "Debug mode: sending message", { sessionId, message: message.slice(0, 50) });
+    await client.session.prompt({
+      path: { id: sessionId },
+      body: {
+        parts: [{ type: "text", text: message }],
+        model: { providerID, modelID },
+        ...(options.agent && { agent: options.agent }),
+      },
+    });
+  };
+
+  return {
+    sessionId,
+    serverUrl: debugServer.url,
+    attached: debugServer.attached,
+    sendMessage,
+  };
+}
+
+/**
+ * Clean up debug mode resources.
+ * Call this when exiting debug mode.
+ */
+export function cleanupDebugSession(): void {
+  if (debugServer) {
+    log("loop", "Debug mode: cleaning up server");
+    debugServer.close();
+    debugServer = null;
+  }
+  debugClient = null;
+}
+
+/**
  * Build the prompt string with precedence: --prompt > --prompt-file > DEFAULT_PROMPT.
  * Replaces {plan} and {{PLAN_FILE}} placeholders with the actual plan file path.
  */
