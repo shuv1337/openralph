@@ -419,7 +419,7 @@
 - [x] Copy `matrix.json` theme file
 - [x] Copy `mercury.json` theme file
 - [x] Copy `monokai.json` theme file
-- [ ] Copy `nightowl.json` theme file
+- [x] Copy `nightowl.json` theme file
 - [ ] Copy `nord.json` theme file
 - [ ] Copy `one-dark.json` theme file
 - [ ] Copy `opencode.json` theme file
