@@ -248,46 +248,46 @@
 ### 2.2 Terminal Launcher (T key)
 
 #### Terminal Definitions
-- [ ] Create `src/lib/terminal-launcher.ts` file
-- [ ] Define `KnownTerminal` interface with `name`, `command`, `args`
-- [ ] Add alacritty terminal definition
-- [ ] Add kitty terminal definition
-- [ ] Add wezterm terminal definition
-- [ ] Add gnome-terminal definition
-- [ ] Add konsole terminal definition
-- [ ] Add xfce4-terminal definition
-- [ ] Add foot terminal definition
-- [ ] Add tilix terminal definition
-- [ ] Add terminator terminal definition
-- [ ] Add xterm terminal definition
-- [ ] Add urxvt terminal definition
-- [ ] Add x-terminal-emulator definition
+- [x] Create `src/lib/terminal-launcher.ts` file
+- [x] Define `KnownTerminal` interface with `name`, `command`, `args`
+- [x] Add alacritty terminal definition
+- [x] Add kitty terminal definition
+- [x] Add wezterm terminal definition
+- [x] Add gnome-terminal definition
+- [x] Add konsole terminal definition
+- [x] Add xfce4-terminal definition
+- [x] Add foot terminal definition
+- [x] Add tilix terminal definition
+- [x] Add terminator terminal definition
+- [x] Add xterm terminal definition
+- [x] Add urxvt terminal definition
+- [x] Add x-terminal-emulator definition
 
 #### Platform-Specific Terminals
-- [ ] Add macOS Terminal.app definition
-- [ ] Add macOS iTerm2 definition
-- [ ] Add Windows Terminal definition
-- [ ] Add Windows cmd.exe definition
+- [x] Add macOS Terminal.app definition
+- [x] Add macOS iTerm2 definition
+- [x] Add Windows Terminal definition
+- [x] Add Windows cmd.exe definition
 
 #### Terminal Detection
-- [ ] Implement `detectInstalledTerminals()` function
-- [ ] Use `which` command to check terminal availability
-- [ ] Filter terminals by platform (darwin/linux/win32)
-- [ ] Return array of installed terminals
-- [ ] Cache detection result
+- [x] Implement `detectInstalledTerminals()` function
+- [x] Use `which` command to check terminal availability
+- [x] Filter terminals by platform (darwin/linux/win32)
+- [x] Return array of installed terminals
+- [x] Cache detection result
 
 #### Terminal Launch
-- [ ] Implement `launchTerminal()` function
-- [ ] Build args array with `{cmd}` placeholder replacement
-- [ ] Split command string into args array
-- [ ] Use `Bun.spawn()` with detached option
-- [ ] Call `unref()` on spawned process
-- [ ] Return success/error result
+- [x] Implement `launchTerminal()` function
+- [x] Build args array with `{cmd}` placeholder replacement
+- [x] Split command string into args array
+- [x] Use `Bun.spawn()` with detached option
+- [x] Call `unref()` on spawned process
+- [x] Return success/error result
 
 #### Attach Command
-- [ ] Implement `getAttachCommand()` function
-- [ ] Format: `opencode attach ${url} --session ${sessionId}`
-- [ ] Handle missing sessionId gracefully
+- [x] Implement `getAttachCommand()` function
+- [x] Format: `opencode attach ${url} --session ${sessionId}`
+- [x] Handle missing sessionId gracefully
 
 #### Config Persistence
 - [ ] Create `src/lib/config.ts` file
