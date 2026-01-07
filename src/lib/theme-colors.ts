@@ -193,3 +193,23 @@ export const legacyColors: Readonly<Record<string, string>> = new Proxy({} as Re
     return getLegacyColor(prop);
   },
 });
+
+/**
+ * Icons for different tool types displayed in the event log.
+ * Uses Nerd Font glyphs for a modern look.
+ */
+export const TOOL_ICONS: Record<string, string> = {
+  read: "󰈞", // Read icon
+  write: "󰏫", // Write icon
+  edit: "󰛓", // Edit icon
+  glob: "center", // Glob icon
+  grep: "󰱽", // Grep icon
+  bash: "󰆍", // Bash icon
+  task: "󰙨", // Task icon
+  webfetch: "󰖟",
+  websearch: "󰖟",
+  codesearch: "󰖟",
+  todowrite: "󰗡",
+  todoread: "󰗡",
+  thought: "󰋚", // Reasoning/Thought icon
+};

@@ -468,7 +468,7 @@
 - [x] Preserve existing `colors.ts` values as fallback
 - [x] Create theme-based color accessor functions
 - [x] Migrate components from direct colors import to theme accessor
-- [ ] Remove direct color imports after migration complete
+- [x] Remove direct color imports after migration complete
 
 ### 3.2 Token Tracking
 
