@@ -411,7 +411,7 @@
 - [x] Copy `dracula.json` theme file
 - [x] Copy `everforest.json` theme file
 - [x] Copy `flexoki.json` theme file
-- [ ] Copy `github.json` theme file
+- [x] Copy `github.json` theme file
 - [ ] Copy `gruvbox.json` theme file
 - [ ] Copy `kanagawa.json` theme file
 - [ ] Copy `lucent-orng.json` theme file
