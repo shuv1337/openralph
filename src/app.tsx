@@ -8,7 +8,7 @@ import { PausedOverlay } from "./components/paused";
 import { SteeringOverlay } from "./components/steering";
 import { DialogProvider, DialogStack, useDialog, useInputFocus } from "./context/DialogContext";
 import { CommandProvider, useCommand, type CommandOption } from "./context/CommandContext";
-import { ToastProvider } from "./context/ToastContext";
+import { ToastProvider, useToast } from "./context/ToastContext";
 import { ToastStack } from "./components/toast";
 import { DialogSelect, type SelectOption } from "./ui/DialogSelect";
 import { DialogAlert } from "./ui/DialogAlert";
@@ -16,6 +16,7 @@ import { DialogPrompt } from "./ui/DialogPrompt";
 import { keymap, matchesKeybind, type KeybindDef } from "./lib/keymap";
 import type { LoopState, LoopOptions, PersistedState } from "./state";
 import { detectInstalledTerminals, launchTerminal, getAttachCommand as getAttachCmdFromTerminal, type KnownTerminal } from "./lib/terminal-launcher";
+import { copyToClipboard, detectClipboardTool } from "./lib/clipboard";
 import { loadConfig, setPreferredTerminal } from "./lib/config";
 import { parsePlanTasks, type Task } from "./plan";
 import { Tasks } from "./components/tasks";
@@ -327,6 +328,7 @@ type AppContentProps = {
 function AppContent(props: AppContentProps) {
   const dialog = useDialog();
   const command = useCommand();
+  const toast = useToast();
   const { isInputFocused: dialogInputFocused } = useInputFocus();
 
   // Combined check for any input being focused
@@ -364,10 +366,52 @@ function AppContent(props: AppContentProps) {
     dialog.show(() => (
       <DialogAlert
         title="Attach Command"
-        message={attachCmd}
+        message={`Copy this command manually:\n\n${attachCmd}`}
         variant="info"
       />
     ));
+  };
+
+  /**
+   * Copy the attach command to clipboard.
+   * Falls back to showing a dialog if clipboard is unavailable.
+   */
+  const copyAttachCommand = async () => {
+    const attachCmd = getAttachCommand();
+    if (!attachCmd) {
+      toast.show({
+        variant: "warning",
+        message: "No active session to copy attach command",
+      });
+      return;
+    }
+
+    // Check if clipboard tool is available
+    const clipboardTool = await detectClipboardTool();
+    if (!clipboardTool) {
+      // No clipboard tool available - show dialog as fallback
+      log("app", "No clipboard tool available, showing dialog fallback");
+      showAttachCommandDialog();
+      return;
+    }
+
+    // Attempt to copy to clipboard
+    const result = await copyToClipboard(attachCmd);
+    if (result.success) {
+      toast.show({
+        variant: "success",
+        message: "Copied to clipboard",
+      });
+      log("app", "Attach command copied to clipboard");
+    } else {
+      toast.show({
+        variant: "error",
+        message: `Failed to copy: ${result.error || "Unknown error"}`,
+      });
+      log("app", "Failed to copy to clipboard", { error: result.error });
+      // Fall back to dialog on error
+      showAttachCommandDialog();
+    }
   };
 
   // Register default commands on mount
@@ -392,11 +436,11 @@ function AppContent(props: AppContentProps) {
       {
         title: "Copy attach command",
         value: "copyAttach",
-        description: "Show attach command for connecting another terminal",
+        description: "Copy attach command to clipboard",
         keybind: keymap.copyAttach.label,
         disabled: !props.state().sessionId,
         onSelect: () => {
-          showAttachCommandDialog();
+          copyAttachCommand();
         },
       },
     ]);

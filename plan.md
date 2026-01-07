@@ -555,15 +555,15 @@
 - [x] Return success or error result
 
 #### Copy Action Integration
-- [ ] Create "Copy attach command" action
-- [ ] Generate attach command from session info
-- [ ] Call `copyToClipboard()` with command
-- [ ] Show toast on success: "Copied to clipboard"
-- [ ] Show toast on error: "Failed to copy"
+- [x] Create "Copy attach command" action
+- [x] Generate attach command from session info
+- [x] Call `copyToClipboard()` with command
+- [x] Show toast on success: "Copied to clipboard"
+- [x] Show toast on error: "Failed to copy"
 
 #### Fallback Behavior
-- [ ] Show attach command in dialog if no clipboard tool
-- [ ] Allow manual selection and copy
+- [x] Show attach command in dialog if no clipboard tool
+- [x] Allow manual selection and copy
 
 ### 3.5 Hooks Architecture Refactor
 
