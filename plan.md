@@ -675,7 +675,7 @@
 - [x] Test session creation and steering message sending
 - [x] Test prompt-file precedence and placeholder replacement
 - [x] Test plan parsing with various checkbox formats
-- [ ] Test terminal detection on different systems
+- [x] Test terminal detection on different systems
 
 ### Manual Testing
 - [ ] Verify steering mode sends messages correctly
