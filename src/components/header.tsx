@@ -1,5 +1,5 @@
 import { createMemo } from "solid-js";
-import { colors } from "./colors";
+import { useTheme } from "../context/ThemeContext";
 import { formatEta } from "../util/time";
 
 export type HeaderProps = {
@@ -16,22 +16,25 @@ export type HeaderProps = {
  * Compact single-line layout for log-centric view.
  */
 export function Header(props: HeaderProps) {
+  const { theme } = useTheme();
+  
   // Status indicator with appropriate icon and color
   const getStatusDisplay = () => {
+    const t = theme();
     switch (props.status) {
       case "running":
-        return { icon: "●", color: colors.green };
+        return { icon: "●", color: t.success };
       case "paused":
-        return { icon: "⏸", color: colors.yellow };
+        return { icon: "⏸", color: t.warning };
       case "complete":
-        return { icon: "✓", color: colors.green };
+        return { icon: "✓", color: t.success };
       case "error":
-        return { icon: "✗", color: colors.red };
+        return { icon: "✗", color: t.error };
       case "idle":
-        return { icon: "○", color: colors.cyan };
+        return { icon: "○", color: t.info };
       case "starting":
       default:
-        return { icon: "◌", color: colors.fgMuted };
+        return { icon: "◌", color: t.textMuted };
     }
   };
 
@@ -46,6 +49,8 @@ export function Header(props: HeaderProps) {
   const filledBar = createMemo(() => "█".repeat(filledCount()));
   const emptyBar = createMemo(() => "░".repeat(8 - filledCount()));
 
+  const t = theme();
+  
   return (
     <box
       flexDirection="row"
@@ -54,40 +59,40 @@ export function Header(props: HeaderProps) {
       alignItems="center"
       paddingLeft={1}
       paddingRight={1}
-      backgroundColor={colors.bgPanel}
+      backgroundColor={t.backgroundPanel}
     >
       {/* Debug mode badge */}
       {props.debug && (
         <>
-          <text fg={colors.yellow}>[DEBUG]</text>
-          <text fg={colors.fgDark}>{" "}</text>
+          <text fg={t.warning}>[DEBUG]</text>
+          <text fg={t.borderSubtle}>{" "}</text>
         </>
       )}
 
       {/* Status indicator */}
       <text fg={statusDisplay.color}>{statusDisplay.icon}</text>
-      <text fg={colors.fg}> {props.status}</text>
+      <text fg={t.text}> {props.status}</text>
 
       {/* Separator */}
-      <text fg={colors.fgDark}>{" │ "}</text>
+      <text fg={t.borderSubtle}>{" │ "}</text>
 
       {/* Iteration display */}
-      <text fg={colors.fgMuted}>iter </text>
-      <text fg={colors.fg}>{props.iteration}</text>
+      <text fg={t.textMuted}>iter </text>
+      <text fg={t.text}>{props.iteration}</text>
 
       {/* Separator */}
-      <text fg={colors.fgDark}>{" │ "}</text>
+      <text fg={t.borderSubtle}>{" │ "}</text>
 
       {/* Task progress with inline progress bar */}
-      <text fg={colors.fgMuted}>{filledBar()}</text>
-      <text fg={colors.fgDark}>{emptyBar()}</text>
-      <text fg={colors.fg}> {props.tasksComplete}/{props.totalTasks}</text>
+      <text fg={t.textMuted}>{filledBar()}</text>
+      <text fg={t.borderSubtle}>{emptyBar()}</text>
+      <text fg={t.text}> {props.tasksComplete}/{props.totalTasks}</text>
 
       {/* Separator */}
-      <text fg={colors.fgDark}>{" │ "}</text>
+      <text fg={t.borderSubtle}>{" │ "}</text>
 
       {/* ETA display */}
-      <text fg={colors.fgMuted}>{formatEta(props.eta)}</text>
+      <text fg={t.textMuted}>{formatEta(props.eta)}</text>
     </box>
   );
 }
