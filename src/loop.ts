@@ -597,19 +597,37 @@ export async function runLoop(
               }
               
               const toolName = part.tool;
+              const input = part.state.input;
               const title =
                 part.state.title ||
-                (Object.keys(part.state.input).length > 0
-                  ? JSON.stringify(part.state.input)
+                (Object.keys(input).length > 0
+                  ? JSON.stringify(input)
                   : "Unknown");
 
-              log("loop", "Tool completed", { toolName, title });
+              // Extract detail based on tool type
+              // For file tools: use filePath or path
+              // For bash: use command
+              // For others: compact JSON of args
+              let detail: string | undefined;
+              if (input.filePath) {
+                detail = String(input.filePath);
+              } else if (input.path) {
+                detail = String(input.path);
+              } else if (input.command) {
+                detail = String(input.command);
+              } else if (Object.keys(input).length > 0) {
+                // Compact JSON for other tools with args
+                detail = JSON.stringify(input);
+              }
+
+              log("loop", "Tool completed", { toolName, title, detail });
               callbacks.onEvent({
                 iteration,
                 type: "tool",
                 icon: toolName,
                 text: title,
                 timestamp: part.state.time.end,
+                detail,
               });
             }
 

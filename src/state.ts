@@ -47,6 +47,8 @@ export type ToolEvent = {
   timestamp: number;
   duration?: number; // For separators: iteration duration
   commitCount?: number; // For separators: commits this iteration
+  detail?: string; // Optional additional detail (e.g., file path, tool args)
+  verbose?: boolean; // Whether this is a verbose/debug event (dim styling)
 };
 
 export const STATE_FILE = ".ralph-state.json";

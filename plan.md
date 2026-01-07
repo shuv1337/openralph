@@ -641,22 +641,22 @@
 - [x] Create `getEventColor()` helper function
 
 #### Event Detail Support
-- [ ] Add optional `detail` field to ActivityEvent
-- [ ] Populate detail for tool_use events with arguments
-- [ ] Populate detail for file events with path
+- [x] Add optional `detail` field to ActivityEvent
+- [x] Populate detail for tool_use events with arguments
+- [x] Populate detail for file events with path
 
 #### Verbose Event Styling
-- [ ] Add `verbose` flag to ActivityEvent
+- [x] Add `verbose` flag to ActivityEvent
 - [ ] Mark reasoning events as verbose
 - [ ] Mark file_read events as verbose
 - [ ] Apply dimmed text style to verbose events
 
 #### Log Component Updates
-- [ ] Update log component to render icons
-- [ ] Apply event-specific colors
+- [x] Update log component to render icons
+- [x] Apply event-specific colors
 - [ ] Render detail text when present
 - [ ] Apply dimmed styling for verbose events
-- [ ] Ensure auto-scroll to latest event
+- [x] Ensure auto-scroll to latest event
 
 ---
 
