@@ -16,6 +16,8 @@ interface RalphConfig {
   model?: string;
   plan?: string;
   prompt?: string;
+  server?: string;
+  serverTimeout?: number;
 }
 
 function loadGlobalConfig(): RalphConfig {

@@ -19,10 +19,10 @@ Allow Ralph to connect to an existing/running OpenCode server via `--server` URL
 
 ### 1.2 Add server fields to RalphConfig interface
 
-- [ ] **1.2.1** Open `src/index.ts` and locate `RalphConfig` interface at lines 15-19
-- [ ] **1.2.2** Add `server?: string;` field for server URL from config
-- [ ] **1.2.3** Add `serverTimeout?: number;` field for timeout in ms
-- [ ] **1.2.4** Run `bun run typecheck` to verify no type errors
+- [x] **1.2.1** Open `src/index.ts` and locate `RalphConfig` interface at lines 15-19
+- [x] **1.2.2** Add `server?: string;` field for server URL from config
+- [x] **1.2.3** Add `serverTimeout?: number;` field for timeout in ms
+- [x] **1.2.4** Run `bun run typecheck` to verify no type errors
 
 ### 1.3 Update mock factories for tests
 
