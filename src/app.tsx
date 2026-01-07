@@ -305,6 +305,7 @@ export function App(props: AppProps) {
         paused={state().status === "paused"}
         linesAdded={state().linesAdded}
         linesRemoved={state().linesRemoved}
+        sessionActive={!!state().sessionId}
       />
       <PausedOverlay visible={state().status === "paused"} />
       <SteeringOverlay

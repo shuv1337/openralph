@@ -39,15 +39,15 @@
 - [x] Add Enter key handler to send message
 
 #### Steering Submit Logic
-- [ ] Implement `sendSteeringMessage()` function in `src/app.tsx`
-- [ ] Trim input and validate non-empty before sending
-- [ ] Call `sendMessage()` with trimmed input
-- [ ] Close overlay and clear input after successful send
-- [ ] Show error feedback if no active session
+- [x] Implement `sendSteeringMessage()` function in `src/app.tsx`
+- [x] Trim input and validate non-empty before sending
+- [x] Call `sendMessage()` with trimmed input
+- [x] Close overlay and clear input after successful send
+- [x] Show error feedback if no active session
 
 #### Steering Footer Hint
-- [ ] Update `src/components/footer.tsx` to show `: steer` hint
-- [ ] Only show hint when session is active
+- [x] Update `src/components/footer.tsx` to show `: steer` hint
+- [x] Only show hint when session is active
 
 ### 1.2 Custom Prompt File Support
 
