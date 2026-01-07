@@ -634,17 +634,17 @@ Allow Ralph to connect to an existing/running OpenCode server via `--server` URL
 ### 10.4 Code review checklist
 
 - [x] **10.4.1** All new functions have JSDoc comments
-- [ ] **10.4.2** No `console.log` statements left in code
-- [ ] **10.4.3** Error messages are clear and actionable
+- [x] **10.4.2** No `console.log` statements left in code (verified: only intentional user output in src/index.ts)
+- [x] **10.4.3** Error messages are clear and actionable
 - [x] **10.4.4** All exports are intentional (don't export internal helpers)
-- [ ] **10.4.5** No TODO/FIXME comments left unresolved
+- [x] **10.4.5** No TODO/FIXME comments left unresolved
 
 ### 10.5 Final cleanup
 
-- [ ] **10.5.1** Remove any debug logging added during development
-- [ ] **10.5.2** Ensure exports are minimal (only export what's needed for tests)
-- [ ] **10.5.3** Run `bun test` one final time
-- [ ] **10.5.4** Run `bun run typecheck` one final time
+- [x] **10.5.1** Remove any debug logging added during development (verified: no debug logging present)
+- [x] **10.5.2** Ensure exports are minimal (only export what's needed for tests)
+- [x] **10.5.3** Run `bun test` one final time (95 tests passing)
+- [x] **10.5.4** Run `bun run typecheck` one final time (no errors)
 
 ---
 
