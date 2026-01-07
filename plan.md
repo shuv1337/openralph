@@ -596,7 +596,19 @@
 - [x] Auto-trim oldest events when limit reached
 
 #### State Migration
-- [ ] Identify current state management in `src/app.tsx`
+- [x] Identify current state management in `src/app.tsx`
+      <!-- Analysis complete:
+           1. Main LoopState signal (lines 149-159): status, iteration, tasks, commits, lines, events, session fields
+           2. Steering mode signals (lines 162-163): commandMode, commandInput
+           3. Tasks panel signals (lines 166-167): showTasks, tasks
+           4. Iteration times signal (lines 197-199): for ETA calculation
+           5. Elapsed time signal (lines 211-212): runtime tracking
+           6. Module-level refs (lines 54-56): globalSetState, globalUpdateIterationTimes, globalSendMessage
+           Migration targets:
+           - useLoopState hook can replace main state + dispatch pattern
+           - useLoopStats hook can replace iterationTimes + elapsed + ETA
+           - Activity log events are already in LoopState.events (ToolEvent[])
+      -->
 - [ ] Create hook instances in App component
 - [ ] Wire dispatch actions to UI handlers
 - [ ] Replace direct signal updates with dispatch calls
