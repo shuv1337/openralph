@@ -210,6 +210,23 @@ export function App(props: AppProps) {
   // Track if we've notified about keyboard events working (only notify once)
   let keyboardEventNotified = false;
 
+  /**
+   * Detect if the `:` (colon) key was pressed.
+   * Handles multiple keyboard configurations:
+   * - Direct `:` character (Kitty protocol or non-US keyboards)
+   * - Shift+`;` (US keyboard layout via raw mode)
+   * - Semicolon with shift modifier
+   */
+  const isColonKey = (e: KeyEvent): boolean => {
+    // Direct colon character (most common case with Kitty protocol)
+    if (e.name === ":") return true;
+    // Raw character is colon
+    if (e.raw === ":") return true;
+    // Shift+semicolon on US keyboard layout
+    if (e.name === ";" && e.shift) return true;
+    return false;
+  };
+
   // Keyboard handling
   useKeyboard((e: KeyEvent) => {
     // Notify caller that OpenTUI keyboard handling is working
@@ -218,8 +235,23 @@ export function App(props: AppProps) {
       keyboardEventNotified = true;
       props.onKeyboardEvent();
     }
+
+    // Skip if any input is focused (dialogs, steering mode, etc.)
+    if (isInputFocused()) return;
     
     const key = e.name.toLowerCase();
+
+    // : key: open steering mode (requires active session)
+    if (isColonKey(e) && !e.ctrl && !e.meta) {
+      const currentState = state();
+      // Only allow steering when there's an active session
+      if (currentState.sessionId) {
+        log("app", "Steering mode opened via ':' key");
+        setCommandMode(true);
+        setCommandInput("");
+      }
+      return;
+    }
 
     // p key: toggle pause
     if (key === "p" && !e.ctrl && !e.meta) {

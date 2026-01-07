@@ -25,10 +25,10 @@
 - [x] Create `isInputFocused()` helper function to check dialog/input state
 
 #### Steering Keyboard Handler
-- [ ] Add `:` key detection logic (handle colon, semicolon+shift, raw `:`)
-- [ ] Add keyboard handler for `:` that opens steering mode
-- [ ] Guard `:` handler to respect `isInputFocused()` state
-- [ ] Guard `:` handler to check for active session
+- [x] Add `:` key detection logic (handle colon, semicolon+shift, raw `:`)
+- [x] Add keyboard handler for `:` that opens steering mode
+- [x] Guard `:` handler to respect `isInputFocused()` state
+- [x] Guard `:` handler to check for active session
 
 #### Steering Overlay Component
 - [ ] Create `src/components/steering.tsx` file
