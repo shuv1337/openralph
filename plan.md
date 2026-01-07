@@ -420,7 +420,7 @@
 - [x] Copy `mercury.json` theme file
 - [x] Copy `monokai.json` theme file
 - [x] Copy `nightowl.json` theme file
-- [ ] Copy `nord.json` theme file
+- [x] Copy `nord.json` theme file
 - [ ] Copy `one-dark.json` theme file
 - [ ] Copy `opencode.json` theme file
 - [ ] Copy `orng.json` theme file
