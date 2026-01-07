@@ -360,14 +360,14 @@
 - [x] Return array of Task objects
 
 #### Tasks Component
-- [ ] Create `src/components/tasks.tsx` file
-- [ ] Add `tasks` prop for Task array
-- [ ] Add `onClose` callback prop
-- [ ] Render scrollable list container
-- [ ] Render checkbox indicator: `[✓]` or `[ ]`
-- [ ] Render task text next to checkbox
-- [ ] Gray out completed tasks
-- [ ] Add ESC key handler to close
+- [x] Create `src/components/tasks.tsx` file
+- [x] Add `tasks` prop for Task array
+- [x] Add `onClose` callback prop
+- [x] Render scrollable list container
+- [x] Render checkbox indicator: `[✓]` or `[ ]`
+- [x] Render task text next to checkbox
+- [x] Gray out completed tasks
+- [x] Add ESC key handler to close (handled via onClose callback from parent)
 
 #### Tasks State
 - [ ] Add `showTasks` signal to `src/app.tsx`
