@@ -611,7 +611,7 @@
       -->
 - [x] Create hook instances in App component
 - [x] Wire dispatch actions to UI handlers
-- [ ] Replace direct signal updates with dispatch calls
+- [x] Replace direct signal updates with dispatch calls
 
 #### App Cleanup
 - [ ] Remove inline state logic from App component

@@ -271,21 +271,23 @@ export function App(props: AppProps) {
     const file = Bun.file(PAUSE_FILE);
     const exists = await file.exists();
     if (exists) {
-      // Resume: delete pause file and update status
+      // Resume: delete pause file and update status via dispatch
       await Bun.write(PAUSE_FILE, ""); // Ensure file exists before unlinking
       const fs = await import("node:fs/promises");
       await fs.unlink(PAUSE_FILE);
-      setState((prev) => ({ ...prev, status: "running" }));
-      // Also dispatch to loopStore (hook-based approach)
+      // Use dispatch as primary state update mechanism
       loopStore.dispatch({ type: "RESUME" });
       loopStats.resume();
+      // Also update legacy state for external compatibility
+      setState((prev) => ({ ...prev, status: "running" }));
     } else {
-      // Pause: create pause file and update status
+      // Pause: create pause file and update status via dispatch
       await Bun.write(PAUSE_FILE, String(process.pid));
-      setState((prev) => ({ ...prev, status: "paused" }));
-      // Also dispatch to loopStore (hook-based approach)
+      // Use dispatch as primary state update mechanism
       loopStore.dispatch({ type: "PAUSE" });
       loopStats.pause();
+      // Also update legacy state for external compatibility
+      setState((prev) => ({ ...prev, status: "paused" }));
     }
   };
 
@@ -604,16 +606,7 @@ function AppContent(props: AppContentProps) {
         agent: props.options.agent,
       });
 
-      // Update state with session info (both legacy and hook-based stores)
-      props.setState((prev) => ({
-        ...prev,
-        sessionId: session.sessionId,
-        serverUrl: session.serverUrl,
-        attached: session.attached,
-        status: "idle", // Ready for input
-      }));
-      
-      // Dispatch to loopStore (hook-based approach for gradual migration)
+      // Update state via dispatch as primary mechanism
       props.loopStore.dispatch({
         type: "SET_SESSION",
         sessionId: session.sessionId,
@@ -621,6 +614,15 @@ function AppContent(props: AppContentProps) {
         attached: session.attached,
       });
       props.loopStore.dispatch({ type: "SET_IDLE", isIdle: true });
+      
+      // Also update legacy state for external compatibility
+      props.setState((prev) => ({
+        ...prev,
+        sessionId: session.sessionId,
+        serverUrl: session.serverUrl,
+        attached: session.attached,
+        status: "idle", // Ready for input
+      }));
 
       // Store sendMessage function for steering mode
       globalSendMessage = session.sendMessage;
@@ -688,15 +690,15 @@ function AppContent(props: AppContentProps) {
             log("app", "Debug mode: sending prompt", { message: value.slice(0, 50) });
             try {
               await globalSendMessage(value);
-              // Update status to show we're running (both legacy and hook-based stores)
+              // Update status via dispatch as primary mechanism
+              props.loopStore.dispatch({ type: "START" });
+              props.loopStore.dispatch({ type: "SET_IDLE", isIdle: false });
+              // Also update legacy state for external compatibility
               props.setState((prev) => ({
                 ...prev,
                 status: "running",
                 isIdle: false,
               }));
-              // Dispatch to loopStore (hook-based approach)
-              props.loopStore.dispatch({ type: "START" });
-              props.loopStore.dispatch({ type: "SET_IDLE", isIdle: false });
             } catch (error) {
               const errorMsg = error instanceof Error ? error.message : String(error);
               log("app", "Debug mode: failed to send prompt", { error: errorMsg });
