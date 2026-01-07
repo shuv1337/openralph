@@ -473,12 +473,12 @@
 ### 3.2 Token Tracking
 
 #### Session Stats Hook
-- [ ] Create `src/hooks/useSessionStats.ts` file
-- [ ] Define `SessionTokens` interface with `input`, `output`, `reasoning`, `cacheRead`, `cacheWrite`
-- [ ] Create `createSessionStats()` function
-- [ ] Create signals for each token counter
-- [ ] Create `reset()` function to zero all counters
-- [ ] Create `addTokens()` function to increment counters
+- [x] Create `src/hooks/useSessionStats.ts` file
+- [x] Define `SessionTokens` interface with `input`, `output`, `reasoning`, `cacheRead`, `cacheWrite`
+- [x] Create `createSessionStats()` function
+- [x] Create signals for each token counter
+- [x] Create `reset()` function to zero all counters
+- [x] Create `addTokens()` function to increment counters
 
 #### SSE Event Integration
 - [ ] Identify token event name in current SDK (e.g., `step.finish`)
