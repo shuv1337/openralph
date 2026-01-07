@@ -1,4 +1,4 @@
-import { colors } from "./colors";
+import { legacyColors as colors } from "../lib/theme-colors";
 
 export type PausedOverlayProps = {
   visible: boolean;

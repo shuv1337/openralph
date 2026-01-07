@@ -467,7 +467,7 @@
 #### Colors Migration
 - [x] Preserve existing `colors.ts` values as fallback
 - [x] Create theme-based color accessor functions
-- [ ] Migrate components from direct colors import to theme accessor
+- [x] Migrate components from direct colors import to theme accessor
 - [ ] Remove direct color imports after migration complete
 
 ### 3.2 Token Tracking

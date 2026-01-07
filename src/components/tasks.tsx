@@ -1,5 +1,5 @@
 import { For } from "solid-js";
-import { colors } from "./colors";
+import { legacyColors as colors } from "../lib/theme-colors";
 import type { Task } from "../plan";
 
 export type TasksProps = {

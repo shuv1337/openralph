@@ -17,7 +17,7 @@ import { detectInstalledTerminals, launchTerminal, getAttachCommand as getAttach
 import { loadConfig, setPreferredTerminal } from "./lib/config";
 import { parsePlanTasks, type Task } from "./plan";
 import { Tasks } from "./components/tasks";
-import { colors } from "./components/colors";
+import { legacyColors as colors } from "./lib/theme-colors";
 import { calculateEta } from "./util/time";
 import { log } from "./util/log";
 import { createDebugSession } from "./loop";
