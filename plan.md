@@ -162,13 +162,13 @@
 - [x] Call `onConfirm` or `onCancel` callback accordingly
 
 #### Prompt Dialog
-- [ ] Create `src/ui/DialogPrompt.tsx` file
-- [ ] Add text input field
-- [ ] Add placeholder text prop
-- [ ] Add Submit/Cancel buttons
-- [ ] Add Enter key to submit
-- [ ] Add Escape key to cancel
-- [ ] Call `onSubmit(value)` or `onCancel` callback
+- [x] Create `src/ui/DialogPrompt.tsx` file
+- [x] Add text input field
+- [x] Add placeholder text prop
+- [x] Add Submit/Cancel buttons
+- [x] Add Enter key to submit
+- [x] Add Escape key to cancel
+- [x] Call `onSubmit(value)` or `onCancel` callback
 
 #### Alert Dialog
 - [ ] Create `src/ui/DialogAlert.tsx` file
