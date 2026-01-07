@@ -21,7 +21,7 @@ import { loadConfig, setPreferredTerminal } from "./lib/config";
 import { parsePlanTasks, type Task } from "./plan";
 import { Tasks } from "./components/tasks";
 import { legacyColors as colors } from "./lib/theme-colors";
-import { calculateEta } from "./util/time";
+
 import { log } from "./util/log";
 import { createDebugSession } from "./loop";
 import { createLoopState, type LoopStateStore, type LoopAction } from "./hooks/useLoopState";
@@ -218,11 +218,6 @@ export function App(props: AppProps) {
     }
   });
 
-  // Signal to track iteration times (for ETA calculation)
-  const [iterationTimes, setIterationTimes] = createSignal<number[]>(
-    props.iterationTimesRef || [...props.persistedState.iterationTimes]
-  );
-
   // Export wrapped state setter for external access. Calls requestRender()
   // after updates to ensure TUI refreshes on all platforms.
   globalSetState = (update) => {
@@ -230,22 +225,23 @@ export function App(props: AppProps) {
     renderer.requestRender?.();
     return result;
   };
-  globalUpdateIterationTimes = (times: number[]) => setIterationTimes(times);
+  // Update iteration times in loopStats (used for ETA calculation)
+  globalUpdateIterationTimes = (times: number[]) => {
+    // Re-initialize loopStats with the updated iteration times
+    // This keeps the hook-based stats in sync with external updates
+    loopStats.initialize(props.persistedState.startTime, times);
+  };
 
-  // Track elapsed time from the persisted start time
-  const [elapsed, setElapsed] = createSignal(
-    Date.now() - props.persistedState.startTime
-  );
-
-  // Update elapsed time periodically (5000ms to reduce render frequency)
-  // Skip updates when idle or paused to reduce unnecessary re-renders
-  // Also ticks the loopStats for pause-aware elapsed time tracking
+  // Update elapsed time and ETA periodically (5000ms to reduce render frequency)
+  // Uses loopStats hook for pause-aware elapsed time tracking
   const elapsedInterval = setInterval(() => {
     const currentState = state();
     if (!currentState.isIdle && currentState.status !== "paused") {
-      setElapsed(Date.now() - props.persistedState.startTime);
       // Tick loopStats for pause-aware elapsed time (hook-based approach)
       loopStats.tick();
+      // Update remaining tasks for ETA calculation
+      const remainingTasks = currentState.totalTasks - currentState.tasksComplete;
+      loopStats.setRemainingTasks(remainingTasks);
     }
   }, 5000);
 
@@ -255,13 +251,6 @@ export function App(props: AppProps) {
     globalSetState = null;
     globalUpdateIterationTimes = null;
   });
-
-  // Calculate ETA based on iteration times and remaining tasks
-  const eta = () => {
-    const currentState = state();
-    const remainingTasks = currentState.totalTasks - currentState.tasksComplete;
-    return calculateEta(iterationTimes(), remainingTasks);
-  };
 
   // Pause file path
   const PAUSE_FILE = ".ralph-pause";
@@ -314,8 +303,6 @@ export function App(props: AppProps) {
             commandMode={commandMode}
             setCommandMode={setCommandMode}
             setCommandInput={setCommandInput}
-            eta={eta}
-            elapsed={elapsed}
             togglePause={togglePause}
             renderer={renderer}
             onQuit={props.onQuit}
@@ -345,8 +332,6 @@ type AppContentProps = {
   commandMode: () => boolean;
   setCommandMode: (v: boolean) => void;
   setCommandInput: (v: string) => void;
-  eta: () => number | null;
-  elapsed: () => number;
   togglePause: () => Promise<void>;
   renderer: ReturnType<typeof useRenderer>;
   onQuit: () => void;
@@ -952,13 +937,13 @@ function AppContent(props: AppContentProps) {
         iteration={props.state().iteration}
         tasksComplete={props.state().tasksComplete}
         totalTasks={props.state().totalTasks}
-        eta={props.eta()}
+        eta={props.loopStats.etaMs()}
         debug={props.options.debug}
       />
       <Log events={props.state().events} isIdle={props.state().isIdle} errorRetryAt={props.state().errorRetryAt} />
       <Footer
         commits={props.state().commits}
-        elapsed={props.elapsed()}
+        elapsed={props.loopStats.elapsedMs()}
         paused={props.state().status === "paused"}
         linesAdded={props.state().linesAdded}
         linesRemoved={props.state().linesRemoved}

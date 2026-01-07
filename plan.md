@@ -614,9 +614,9 @@
 - [x] Replace direct signal updates with dispatch calls
 
 #### App Cleanup
-- [ ] Remove inline state logic from App component
-- [ ] Use hook-provided derived states
-- [ ] Simplify component to UI rendering only
+- [x] Remove inline state logic from App component
+- [x] Use hook-provided derived states
+- [x] Simplify component to UI rendering only
 
 ### 3.6 Enhanced Activity Log
 
