@@ -255,52 +255,52 @@ Allow Ralph to connect to an existing/running OpenCode server via `--server` URL
 
 ### 4.1 Create connectToExternalServer function
 
-- [ ] **4.1.1** Open `src/loop.ts`
-- [ ] **4.1.2** Add the following function after `checkServerHealth`:
-  ```typescript
-  /**
-   * Connect to an external OpenCode server at the specified URL.
-   * Validates the URL format and server health before returning.
-   * 
-   * NOTE: This function only returns connection info. The actual client
-   * is created by runLoop() using createOpencodeClient() with createTimeoutlessFetch().
-   * 
-   * @throws Error if URL is invalid or server is not healthy
-   */
-  async function connectToExternalServer(
-    url: string,
-    options?: { timeoutMs?: number; signal?: AbortSignal }
-  ): Promise<{ url: string; close(): void; attached: boolean }> {
-    const timeoutMs = options?.timeoutMs ?? 5000;
-    
-    const normalizedUrl = validateAndNormalizeServerUrl(url);
-    
-    // Warn about non-HTTPS for non-localhost (logged to .ralph-log for debugging)
-    if (!normalizedUrl.startsWith("https://") && !isLocalhost(normalizedUrl)) {
-      log("loop", "WARNING: Using insecure HTTP connection to non-localhost server", { 
-        url: normalizedUrl 
-      });
-    }
-    
-    // Check server health with timeout (and optional user abort signal)
-    const health = await checkServerHealth(normalizedUrl, timeoutMs, options?.signal);
-    if (!health.ok) {
-      const message = health.reason === "unreachable" 
-        ? `Cannot connect to server at ${normalizedUrl}` 
-        : `Server unhealthy at ${normalizedUrl}`;
-      throw new Error(message);
-    }
-    
-    log("loop", "Connected to external server", { url: normalizedUrl });
-    
-    return {
-      url: normalizedUrl,
-      close: () => {}, // No-op - we don't manage external servers
-      attached: true,
-    };
-  }
-  ```
-- [ ] **4.1.3** Run `bun run typecheck` to verify no errors
+- [x] **4.1.1** Open `src/loop.ts`
+- [x] **4.1.2** Add the following function after `checkServerHealth`:
+   ```typescript
+   /**
+    * Connect to an external OpenCode server at the specified URL.
+    * Validates the URL format and server health before returning.
+    * 
+    * NOTE: This function only returns connection info. The actual client
+    * is created by runLoop() using createOpencodeClient() with createTimeoutlessFetch().
+    * 
+    * @throws Error if URL is invalid or server is not healthy
+    */
+   async function connectToExternalServer(
+     url: string,
+     options?: { timeoutMs?: number; signal?: AbortSignal }
+   ): Promise<{ url: string; close(): void; attached: boolean }> {
+     const timeoutMs = options?.timeoutMs ?? 5000;
+     
+     const normalizedUrl = validateAndNormalizeServerUrl(url);
+     
+     // Warn about non-HTTPS for non-localhost (logged to .ralph-log for debugging)
+     if (!normalizedUrl.startsWith("https://") && !isLocalhost(normalizedUrl)) {
+       log("loop", "WARNING: Using insecure HTTP connection to non-localhost server", { 
+         url: normalizedUrl 
+       });
+     }
+     
+     // Check server health with timeout (and optional user abort signal)
+     const health = await checkServerHealth(normalizedUrl, timeoutMs, options?.signal);
+     if (!health.ok) {
+       const message = health.reason === "unreachable" 
+         ? `Cannot connect to server at ${normalizedUrl}` 
+         : `Server unhealthy at ${normalizedUrl}`;
+       throw new Error(message);
+     }
+     
+     log("loop", "Connected to external server", { url: normalizedUrl });
+     
+     return {
+       url: normalizedUrl,
+       close: () => {}, // No-op - we don't manage external servers
+       attached: true,
+     };
+   }
+   ```
+- [x] **4.1.3** Run `bun run typecheck` to verify no errors
 
 ### 4.2 Write unit tests for connectToExternalServer
 

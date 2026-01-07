@@ -83,6 +83,48 @@ export async function checkServerHealth(
 }
 
 /**
+ * Connect to an external OpenCode server at the specified URL.
+ * Validates the URL format and server health before returning.
+ * 
+ * NOTE: This function only returns connection info. The actual client
+ * is created by runLoop() using createOpencodeClient() with createTimeoutlessFetch().
+ * 
+ * @throws Error if URL is invalid or server is not healthy
+ */
+export async function connectToExternalServer(
+  url: string,
+  options?: { timeoutMs?: number; signal?: AbortSignal }
+): Promise<{ url: string; close(): void; attached: boolean }> {
+  const timeoutMs = options?.timeoutMs ?? 5000;
+  
+  const normalizedUrl = validateAndNormalizeServerUrl(url);
+  
+  // Warn about non-HTTPS for non-localhost (logged to .ralph-log for debugging)
+  if (!normalizedUrl.startsWith("https://") && !isLocalhost(normalizedUrl)) {
+    log("loop", "WARNING: Using insecure HTTP connection to non-localhost server", { 
+      url: normalizedUrl 
+    });
+  }
+  
+  // Check server health with timeout (and optional user abort signal)
+  const health = await checkServerHealth(normalizedUrl, timeoutMs, options?.signal);
+  if (!health.ok) {
+    const message = health.reason === "unreachable" 
+      ? `Cannot connect to server at ${normalizedUrl}` 
+      : `Server unhealthy at ${normalizedUrl}`;
+    throw new Error(message);
+  }
+  
+  log("loop", "Connected to external server", { url: normalizedUrl });
+  
+  return {
+    url: normalizedUrl,
+    close: () => {}, // No-op - we don't manage external servers
+    attached: true,
+  };
+}
+
+/**
  * Check if an opencode server is already running at the given URL.
  * Uses the /global/health endpoint.
  */
