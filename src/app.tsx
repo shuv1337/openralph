@@ -298,7 +298,7 @@ export function App(props: AppProps) {
         totalTasks={state().totalTasks}
         eta={eta()}
       />
-      <Log events={state().events} isIdle={state().isIdle} />
+      <Log events={state().events} isIdle={state().isIdle} errorRetryAt={state().errorRetryAt} />
       <Footer
         commits={state().commits}
         elapsed={elapsed()}

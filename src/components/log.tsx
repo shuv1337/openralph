@@ -1,4 +1,4 @@
-import { For, Match, Switch, createEffect, createMemo, createSignal, onCleanup } from "solid-js";
+import { For, Match, Show, Switch, createEffect, createMemo, createSignal, onCleanup } from "solid-js";
 import { colors, TOOL_ICONS } from "./colors";
 import { formatDuration } from "../util/time";
 import type { ToolEvent } from "../state";
@@ -54,7 +54,38 @@ function getToolColor(icon: string | undefined): string {
 export type LogProps = {
   events: ToolEvent[];
   isIdle: boolean;
+  /** Timestamp (epoch ms) when next retry will occur, undefined when no backoff active */
+  errorRetryAt?: number;
 };
+
+/**
+ * Retry countdown component displaying "Retrying in Xs..." during error backoff.
+ * Updates every second to show accurate countdown.
+ */
+function RetryCountdown(props: { retryAt: number }) {
+  const [remaining, setRemaining] = createSignal(
+    Math.max(0, Math.ceil((props.retryAt - Date.now()) / 1000))
+  );
+
+  // Update countdown every second
+  const intervalRef = setInterval(() => {
+    const secs = Math.max(0, Math.ceil((props.retryAt - Date.now()) / 1000));
+    setRemaining(secs);
+  }, 1000);
+
+  onCleanup(() => {
+    clearInterval(intervalRef);
+  });
+
+  return (
+    <box width="100%" flexDirection="row" paddingTop={1}>
+      <text fg={colors.yellow}>⏳</text>
+      <text fg={colors.fgMuted}> Retrying in </text>
+      <text fg={colors.yellow}>{remaining()}s</text>
+      <text fg={colors.fgMuted}>...</text>
+    </box>
+  );
+}
 
 /**
  * Animated spinner component using braille characters.
@@ -214,6 +245,9 @@ export function Log(props: LogProps) {
           </Switch>
         )}
       </For>
+      <Show when={props.errorRetryAt !== undefined}>
+        <RetryCountdown retryAt={props.errorRetryAt!} />
+      </Show>
     </scrollbox>
   );
 }

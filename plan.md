@@ -109,8 +109,8 @@
 #### Error Display in TUI
 - [x] Add `errorBackoffMs` field to `LoopState` in `src/state.ts`
 - [x] Add `errorRetryAt` field to `LoopState` (timestamp for countdown)
-- [ ] Update TUI to show retry countdown when backoff active
-- [ ] Format countdown as "Retrying in Xs..." in log component
+- [x] Update TUI to show retry countdown when backoff active
+- [x] Format countdown as "Retrying in Xs..." in log component
 
 ### 1.4 Agent Selection (`-a` flag)
 
