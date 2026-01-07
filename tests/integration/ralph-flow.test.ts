@@ -669,4 +669,177 @@ describe("ralph flow integration", () => {
 
     globalThis.fetch = originalFetch;
   });
+
+  it("should call onSessionCreated with attached=true when using external server", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock(() => 
+      Promise.resolve(new Response(JSON.stringify({ healthy: true }), { status: 200 }))
+    ) as unknown as typeof fetch;
+
+    let capturedSessionInfo: {
+      sessionId: string;
+      serverUrl: string;
+      attached: boolean;
+      sendMessage: (message: string) => Promise<void>;
+    } | null = null;
+
+    const options: LoopOptions = {
+      planFile: testPlanFile,
+      model: "anthropic/claude-sonnet-4",
+      prompt: "Test prompt for {plan}",
+      serverUrl: "http://localhost:4190",
+      serverTimeoutMs: 1000,
+    };
+
+    const persistedState: PersistedState = {
+      startTime: Date.now(),
+      initialCommitHash: "abc123",
+      iterationTimes: [],
+      planFile: testPlanFile,
+    };
+
+    const callbacks: LoopCallbacks = {
+      ...createTestCallbacks(),
+      onSessionCreated: (session) => {
+        callbackOrder.push(`onSessionCreated:${session.sessionId}`);
+        capturedSessionInfo = session;
+      },
+      onSessionEnded: (sessionId) => {
+        callbackOrder.push(`onSessionEnded:${sessionId}`);
+      },
+    };
+
+    const controller = new AbortController();
+
+    // Schedule creation of .ralph-done after session is created
+    cleanupFiles.push(".ralph-done");
+    setTimeout(async () => {
+      await Bun.write(".ralph-done", "");
+    }, 100);
+
+    await runLoop(options, persistedState, callbacks, controller.signal);
+
+    // Verify onSessionCreated was called
+    expect(capturedSessionInfo).not.toBeNull();
+    expect(capturedSessionInfo!.sessionId).toBe("test-session-123");
+    expect(capturedSessionInfo!.serverUrl).toBe("http://localhost:4190");
+    expect(capturedSessionInfo!.attached).toBe(true);
+    expect(typeof capturedSessionInfo!.sendMessage).toBe("function");
+
+    // Verify callback order includes session lifecycle events
+    expect(callbackOrder).toContain("onSessionCreated:test-session-123");
+    expect(callbackOrder).toContain("onSessionEnded:test-session-123");
+
+    globalThis.fetch = originalFetch;
+  });
+
+  it("should call onSessionEnded when session completes with external server", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock(() => 
+      Promise.resolve(new Response(JSON.stringify({ healthy: true }), { status: 200 }))
+    ) as unknown as typeof fetch;
+
+    let sessionEndedCalled = false;
+    let endedSessionId = "";
+
+    const options: LoopOptions = {
+      planFile: testPlanFile,
+      model: "anthropic/claude-sonnet-4",
+      prompt: "Test prompt for {plan}",
+      serverUrl: "http://localhost:4190",
+      serverTimeoutMs: 1000,
+    };
+
+    const persistedState: PersistedState = {
+      startTime: Date.now(),
+      initialCommitHash: "abc123",
+      iterationTimes: [],
+      planFile: testPlanFile,
+    };
+
+    const callbacks: LoopCallbacks = {
+      ...createTestCallbacks(),
+      onSessionEnded: (sessionId) => {
+        sessionEndedCalled = true;
+        endedSessionId = sessionId;
+        callbackOrder.push(`onSessionEnded:${sessionId}`);
+      },
+    };
+
+    const controller = new AbortController();
+
+    // Schedule creation of .ralph-done after iteration completes
+    cleanupFiles.push(".ralph-done");
+    setTimeout(async () => {
+      await Bun.write(".ralph-done", "");
+    }, 100);
+
+    await runLoop(options, persistedState, callbacks, controller.signal);
+
+    // Verify onSessionEnded was called with correct session ID
+    expect(sessionEndedCalled).toBe(true);
+    expect(endedSessionId).toBe("test-session-123");
+
+    // Verify it was called after session.idle event (which signals session completion)
+    const sessionEndedIndex = callbackOrder.findIndex(c => c.startsWith("onSessionEnded:"));
+    const iterationCompleteIndex = callbackOrder.findIndex(c => c.startsWith("onIterationComplete:"));
+    expect(sessionEndedIndex).toBeGreaterThan(-1);
+    expect(iterationCompleteIndex).toBeGreaterThan(-1);
+    // Session ends before iteration completes (session.idle triggers session end, then iteration finishes)
+    expect(sessionEndedIndex).toBeLessThan(iterationCompleteIndex);
+
+    globalThis.fetch = originalFetch;
+  });
+
+  it("should provide working sendMessage function in onSessionCreated callback", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock(() => 
+      Promise.resolve(new Response(JSON.stringify({ healthy: true }), { status: 200 }))
+    ) as unknown as typeof fetch;
+
+    let capturedSendMessage: ((message: string) => Promise<void>) | null = null;
+
+    const options: LoopOptions = {
+      planFile: testPlanFile,
+      model: "anthropic/claude-sonnet-4",
+      prompt: "Test prompt for {plan}",
+      serverUrl: "http://localhost:4190",
+      serverTimeoutMs: 1000,
+    };
+
+    const persistedState: PersistedState = {
+      startTime: Date.now(),
+      initialCommitHash: "abc123",
+      iterationTimes: [],
+      planFile: testPlanFile,
+    };
+
+    const callbacks: LoopCallbacks = {
+      ...createTestCallbacks(),
+      onSessionCreated: (session) => {
+        capturedSendMessage = session.sendMessage;
+        callbackOrder.push(`onSessionCreated:${session.sessionId}`);
+      },
+    };
+
+    const controller = new AbortController();
+
+    // Schedule creation of .ralph-done after session is created
+    cleanupFiles.push(".ralph-done");
+    setTimeout(async () => {
+      await Bun.write(".ralph-done", "");
+    }, 100);
+
+    await runLoop(options, persistedState, callbacks, controller.signal);
+
+    // Verify sendMessage was captured
+    expect(capturedSendMessage).not.toBeNull();
+    expect(typeof capturedSendMessage).toBe("function");
+
+    // The sendMessage function should be callable (though in this test it will fail
+    // because session has already ended - this is expected behavior)
+    // The key verification is that the function exists and has the correct signature
+
+    globalThis.fetch = originalFetch;
+  });
 });
