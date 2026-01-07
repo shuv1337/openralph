@@ -587,13 +587,13 @@
 - [x] Estimate remaining time (ETA)
 
 #### Activity Log Hook
-- [ ] Create `src/hooks/useActivityLog.ts` file
-- [ ] Define `ActivityEvent` type with timestamp, type, message
-- [ ] Create `createActivityLog()` function
-- [ ] Create events array signal (max 100 items)
-- [ ] Implement `log()` to add event
-- [ ] Implement `clear()` to reset events
-- [ ] Auto-trim oldest events when limit reached
+- [x] Create `src/hooks/useActivityLog.ts` file
+- [x] Define `ActivityEvent` type with timestamp, type, message
+- [x] Create `createActivityLog()` function
+- [x] Create events array signal (max 100 items)
+- [x] Implement `log()` to add event
+- [x] Implement `clear()` to reset events
+- [x] Auto-trim oldest events when limit reached
 
 #### State Migration
 - [ ] Identify current state management in `src/app.tsx`
