@@ -465,7 +465,7 @@
 - [x] Update steering overlay to use theme colors
 
 #### Colors Migration
-- [ ] Preserve existing `colors.ts` values as fallback
+- [x] Preserve existing `colors.ts` values as fallback
 - [ ] Create theme-based color accessor functions
 - [ ] Migrate components from direct colors import to theme accessor
 - [ ] Remove direct color imports after migration complete

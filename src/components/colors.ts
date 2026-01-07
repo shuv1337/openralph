@@ -1,5 +1,25 @@
 /**
- * Night Owl color palette for the TUI
+ * Fallback color palette for the TUI (Night Owl theme).
+ * 
+ * These values serve as fallback colors when:
+ * - Theme context is not yet available (during initialization)
+ * - Components haven't been migrated to use ThemeContext
+ * - Theme resolution fails for any reason
+ * 
+ * For new components, prefer using `useTheme()` from ThemeContext.
+ * These values map to the following theme properties:
+ * - bg/bgDark/bgHighlight/bgPanel -> background/backgroundPanel/backgroundElement
+ * - fg/fgDark/fgMuted -> text/textMuted
+ * - green -> success
+ * - red -> error
+ * - yellow -> warning
+ * - blue -> info
+ * - purple -> accent
+ * - cyan -> secondary
+ * - border -> border
+ * - orange -> (custom, use warning or accent as fallback)
+ * 
+ * @deprecated For new code, use `useTheme()` hook from ThemeContext instead.
  */
 export const colors = {
   bg: "#011627",
