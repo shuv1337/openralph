@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { buildPrompt, parseModel } from "../../src/loop.js";
+import { buildPrompt, parseModel, validateAndNormalizeServerUrl } from "../../src/loop.js";
 import type { LoopOptions } from "../../src/state.js";
 
 describe("buildPrompt", () => {
@@ -149,6 +149,52 @@ describe("parseModel", () => {
         providerID: "aws",
         modelID: "bedrock/claude-3-sonnet",
       });
+    });
+  });
+});
+
+describe("validateAndNormalizeServerUrl", () => {
+  describe("valid URLs", () => {
+    it("should accept http://localhost:4190", () => {
+      expect(validateAndNormalizeServerUrl("http://localhost:4190")).toBe("http://localhost:4190");
+    });
+
+    it("should accept https://example.com", () => {
+      expect(validateAndNormalizeServerUrl("https://example.com")).toBe("https://example.com");
+    });
+
+    it("should accept http://192.168.1.100:4190", () => {
+      expect(validateAndNormalizeServerUrl("http://192.168.1.100:4190")).toBe("http://192.168.1.100:4190");
+    });
+
+    it("should normalize URL with trailing slash", () => {
+      expect(validateAndNormalizeServerUrl("http://localhost:4190/")).toBe("http://localhost:4190");
+    });
+  });
+
+  describe("invalid URLs", () => {
+    it("should reject non-URL strings", () => {
+      expect(() => validateAndNormalizeServerUrl("not-a-url")).toThrow("Invalid URL format");
+    });
+
+    it("should reject URLs with paths", () => {
+      expect(() => validateAndNormalizeServerUrl("http://localhost:4190/api")).toThrow("origin only");
+    });
+
+    it("should reject URLs with query strings", () => {
+      expect(() => validateAndNormalizeServerUrl("http://localhost:4190?foo=bar")).toThrow("origin only");
+    });
+
+    it("should reject URLs with hash fragments", () => {
+      expect(() => validateAndNormalizeServerUrl("http://localhost:4190#section")).toThrow("origin only");
+    });
+
+    it("should reject non-http protocols", () => {
+      expect(() => validateAndNormalizeServerUrl("ftp://localhost:4190")).toThrow("Invalid protocol");
+    });
+
+    it("should reject ws:// protocol", () => {
+      expect(() => validateAndNormalizeServerUrl("ws://localhost:4190")).toThrow("Invalid protocol");
     });
   });
 });

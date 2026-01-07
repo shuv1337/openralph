@@ -84,10 +84,10 @@ Allow Ralph to connect to an existing/running OpenCode server via `--server` URL
 
 ### 2.3 Write unit tests for URL validation
 
-- [ ] **2.3.1** Open `tests/unit/loop.test.ts`
-- [ ] **2.3.2** Add import at top: update the import to include `validateAndNormalizeServerUrl` (will need to export it first)
-- [ ] **2.3.3** Go back to `src/loop.ts` and add `export` keyword to `validateAndNormalizeServerUrl`
-- [ ] **2.3.4** Add the following test suite after existing tests:
+- [x] **2.3.1** Open `tests/unit/loop.test.ts`
+- [x] **2.3.2** Add import at top: update the import to include `validateAndNormalizeServerUrl` (will need to export it first)
+- [x] **2.3.3** Go back to `src/loop.ts` and add `export` keyword to `validateAndNormalizeServerUrl`
+- [x] **2.3.4** Add the following test suite after existing tests:
   ```typescript
   describe("validateAndNormalizeServerUrl", () => {
     describe("valid URLs", () => {
@@ -135,7 +135,7 @@ Allow Ralph to connect to an existing/running OpenCode server via `--server` URL
     });
   });
   ```
-- [ ] **2.3.5** Run `bun test tests/unit/loop.test.ts` to verify tests pass
+- [x] **2.3.5** Run `bun test tests/unit/loop.test.ts` to verify tests pass
 
 ---
 
