@@ -417,7 +417,7 @@
 - [x] Copy `lucent-orng.json` theme file
 - [x] Copy `material.json` theme file
 - [x] Copy `matrix.json` theme file
-- [ ] Copy `mercury.json` theme file
+- [x] Copy `mercury.json` theme file
 - [ ] Copy `monokai.json` theme file
 - [ ] Copy `nightowl.json` theme file
 - [ ] Copy `nord.json` theme file
