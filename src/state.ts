@@ -69,4 +69,6 @@ export type LoopOptions = {
   planFile: string;
   model: string;
   prompt: string;
+  serverUrl?: string;
+  serverTimeoutMs?: number;
 };

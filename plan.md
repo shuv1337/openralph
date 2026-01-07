@@ -1,531 +1,678 @@
-# opencode-ralph TUI Fix Plan
+# Connect Ralph to Existing OpenCode Server
 
-Critical fixes for TUI rendering, keyboard handling, and process management.
+Allow Ralph to connect to an existing/running OpenCode server via `--server` URL instead of auto-detecting or launching its own.
 
-**Problem Summary**: The TUI doesn't update, 'q' doesn't quit, and keyboard events are not being processed. Root causes identified:
-1. Subprocess wrapper in `bin/ralph.ts` interferes with OpenTUI's stdin/stdout control
-2. Solid's `onMount` lifecycle hook not firing reliably, preventing keyboard event registration
-3. Conflicting stdin handlers between ralph and OpenTUI
-4. Missing OpenTUI configuration options that opencode uses
+**Reference:** See `CONTEXT/PLAN-attach-to-existing-opencode-server-2026-01-06.md` for full design context.
+
+**Key Constraint:** Ralph reads plan files and git state locally. Connecting to a remote server only makes sense if it operates on the same working directory (shared filesystem).
 
 ---
 
-## Phase 1: Remove Subprocess Wrapper (Root Cause Fix)
+## Phase 1: Update Type Definitions
 
-The `bin/ralph.ts` file spawns a child process which creates stdin/stdout inheritance issues with OpenTUI.
+### 1.1 Add serverUrl to LoopOptions type
 
-- [x] **1.1** Backup current `bin/ralph.ts` implementation:
-  - Copy current implementation to a comment block for reference
-  - Document why subprocess approach was originally used (preload requirement)
+- [x] **1.1.1** Open `src/state.ts` and locate the `LoopOptions` type at lines 68-72
+- [x] **1.1.2** Add `serverUrl?: string;` field after `prompt: string;`
+- [x] **1.1.3** Add `serverTimeoutMs?: number;` field after `serverUrl`
+- [x] **1.1.4** Run `bun run typecheck` to verify no type errors introduced
 
-- [x] **1.2** Refactor `bin/ralph.ts` to run directly without subprocess:
-  - Remove `spawn()` call entirely
-  - Import and call the main entry point directly
-  - Example pattern from opencode: direct invocation without subprocess
+### 1.2 Add server fields to RalphConfig interface
 
-- [x] **1.3** Handle the `@opentui/solid/preload` requirement:
-  - Option A: Add preload to `bunfig.toml` at package root (already exists) ✓
-  - Option B: Use dynamic import after preload is loaded (not needed)
-  - Verified: preload is applied correctly - TUI renders and Solid JSX works
+- [ ] **1.2.1** Open `src/index.ts` and locate `RalphConfig` interface at lines 15-19
+- [ ] **1.2.2** Add `server?: string;` field for server URL from config
+- [ ] **1.2.3** Add `serverTimeout?: number;` field for timeout in ms
+- [ ] **1.2.4** Run `bun run typecheck` to verify no type errors
 
-- [x] **1.4** Preserve `RALPH_USER_CWD` behavior:
-  - The cwd handling in `src/index.ts` works correctly
-  - Tested: `bin/ralph.ts` saves `RALPH_USER_CWD`, changes to package root, then `src/index.ts` restores to user's cwd
-  - Note: Must run `bun bin/ralph.ts` from the package directory (or use `bun run ralph`) so bun finds `bunfig.toml` for the preload
+### 1.3 Update mock factories for tests
 
-- [x] **1.5** Test the direct execution approach:
-  - Run `bun bin/ralph.ts` directly - works
-  - TUI renders correctly with header, log area, footer
-  - Keyboard shortcuts displayed: (q) interrupt (p) pause
+- [ ] **1.3.1** Open `tests/helpers/mock-factories.ts`
+- [ ] **1.3.2** Locate `createMockLoopOptions()` function at lines 51-60
+- [ ] **1.3.3** Add `serverUrl` and `serverTimeoutMs` to the returned object with `undefined` defaults
+- [ ] **1.3.4** Run `bun test` to verify existing tests still pass
 
 ---
 
-## Phase 2: Fix Component Lifecycle and Mount Timing
+## Phase 2: Add URL Validation Functions
 
-The `onMount` hook in Solid components isn't firing reliably, which breaks keyboard event registration.
+### 2.1 Create validateAndNormalizeServerUrl function
 
-- [x] **2.1** Research how opencode handles component initialization:
-  - Look at `.reference/opencode/packages/opencode/src/cli/cmd/tui/app.tsx`
-  - Note they don't await render() and don't use mount promises
-  - Document the pattern they use
-  
-  **Findings (2025-01-05):**
-  1. **No await on render()** - OpenCode calls `render()` without awaiting (line 108-162)
-  2. **No mount promises** - No `mountPromise`/`mountResolve` pattern exists
-  3. **Promise wraps entire `tui()` function** - Returns `new Promise<void>()` that resolves only via `onExit` callback, not mount completion
-  4. **State via contexts not signals** - Uses nested Providers (RouteProvider, SDKProvider, LocalProvider, etc.)
-  5. **`onMount` for init logic only** - Used at line 225 for arg processing, NOT for signaling external code
-  6. **`renderer.disableStdoutInterception()` called at line 170** - Immediately after `useRenderer()`
-  7. **`useKittyKeyboard: {}` in render options** - At line 152, enables keyboard protocol
-  8. **Trusts Solid reactivity** - No manual `renderer.requestRender()` calls for state updates
+- [ ] **2.1.1** Open `src/loop.ts`
+- [ ] **2.1.2** Add the following function after the imports (around line 10):
+  ```typescript
+  /**
+   * Validate and normalize a server URL.
+   * @returns normalized origin (no trailing slash)
+   * @throws Error if URL is invalid or not an origin
+   */
+  function validateAndNormalizeServerUrl(url: string): string {
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      throw new Error(`Invalid URL format: ${url}`);
+    }
+    
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      throw new Error(`Invalid protocol: ${parsed.protocol}. Must be http or https.`);
+    }
+    if (parsed.pathname !== "/" || parsed.search || parsed.hash) {
+      throw new Error(`Server URL must be origin only (no path/query/fragment): ${url}`);
+    }
+    
+    // URL.origin never has trailing slash per WHATWG spec
+    return parsed.origin;
+  }
+  ```
+- [ ] **2.1.3** Run `bun run typecheck` to verify no errors
 
-- [x] **2.2** Remove the `mountPromise` pattern in `src/app.tsx`:
-  - The current code resolves `mountPromise` synchronously during component body
-  - This is a workaround that doesn't actually wait for `onMount`
-  - Remove `mountResolve` and `mountPromise` variables
-  
-  **Completed (2025-01-05):**
-  - Removed `mountResolve` module-level variable
-  - Removed `mountPromise` creation in `startApp()`
-  - Removed `await mountPromise` call
-  - Removed mount resolution logic in `App` component body
-  - Now follows OpenCode pattern: state setters available immediately after `render()` completes
+### 2.2 Create isLocalhost helper function
 
-- [x] **2.3** Refactor `startApp()` to not depend on mount timing:
-  - Return `stateSetters` immediately after render() completes
-  - Trust that Solid's reactive system will handle updates
-  - The state setters should work even before `onMount` fires
-  
-  **Completed (2025-01-05):**
-  - Added validation that globalSetState/globalUpdateIterationTimes are set after render()
-  - Simplified stateSetters to directly use the global setters (no wrapper indirection)
-  - Added clear documentation explaining that state setters are set in component body (not onMount)
-  - Follows OpenCode pattern: trust Solid's reactive system, no mount timing dependencies
+- [ ] **2.2.1** Add the following function after `validateAndNormalizeServerUrl`:
+  ```typescript
+  /**
+   * Check if a URL points to localhost.
+   */
+  function isLocalhost(url: string): boolean {
+    const parsed = new URL(url);
+    return parsed.hostname === "localhost" || 
+           parsed.hostname === "127.0.0.1" || 
+           parsed.hostname === "::1";
+  }
+  ```
+- [ ] **2.2.2** Run `bun run typecheck` to verify no errors
 
-- [x] **2.4** Simplify the `globalSetState` pattern:
-  - Currently wraps setState with logging and requestRender
-  - Consider if this wrapper is necessary
-  - Keep the `renderer.requestRender?.()` call as it may help
-  
-  **Completed (2025-01-05):**
-  - Removed verbose debug logging from globalSetState wrapper
-  - Kept `renderer.requestRender?.()` call for Windows compatibility
-  - Added clear documentation comment explaining why the wrapper exists
-  - Follows OpenCode's approach: requestRender only for specific edge cases, but kept defensively for cross-platform reliability
+### 2.3 Write unit tests for URL validation
 
-- [x] **2.5** Test that state updates trigger re-renders:
-  - Add logging to verify setState is being called
-  - Verify the TUI visually updates when state changes
-  
-  **Completed (2025-01-05):**
-  - Added `createEffect` that logs whenever state changes to confirm Solid's reactivity is working
-  - The effect logs status, iteration, tasksComplete, totalTasks, eventsCount, and isIdle on every state change
-  - This proves setState triggers re-renders (effect fires on each state mutation)
-  - TypeScript compiles successfully, CLI loads without errors
+- [ ] **2.3.1** Open `tests/unit/loop.test.ts`
+- [ ] **2.3.2** Add import at top: update the import to include `validateAndNormalizeServerUrl` (will need to export it first)
+- [ ] **2.3.3** Go back to `src/loop.ts` and add `export` keyword to `validateAndNormalizeServerUrl`
+- [ ] **2.3.4** Add the following test suite after existing tests:
+  ```typescript
+  describe("validateAndNormalizeServerUrl", () => {
+    describe("valid URLs", () => {
+      it("should accept http://localhost:4190", () => {
+        expect(validateAndNormalizeServerUrl("http://localhost:4190")).toBe("http://localhost:4190");
+      });
+
+      it("should accept https://example.com", () => {
+        expect(validateAndNormalizeServerUrl("https://example.com")).toBe("https://example.com");
+      });
+
+      it("should accept http://192.168.1.100:4190", () => {
+        expect(validateAndNormalizeServerUrl("http://192.168.1.100:4190")).toBe("http://192.168.1.100:4190");
+      });
+
+      it("should normalize URL with trailing slash", () => {
+        expect(validateAndNormalizeServerUrl("http://localhost:4190/")).toBe("http://localhost:4190");
+      });
+    });
+
+    describe("invalid URLs", () => {
+      it("should reject non-URL strings", () => {
+        expect(() => validateAndNormalizeServerUrl("not-a-url")).toThrow("Invalid URL format");
+      });
+
+      it("should reject URLs with paths", () => {
+        expect(() => validateAndNormalizeServerUrl("http://localhost:4190/api")).toThrow("origin only");
+      });
+
+      it("should reject URLs with query strings", () => {
+        expect(() => validateAndNormalizeServerUrl("http://localhost:4190?foo=bar")).toThrow("origin only");
+      });
+
+      it("should reject URLs with hash fragments", () => {
+        expect(() => validateAndNormalizeServerUrl("http://localhost:4190#section")).toThrow("origin only");
+      });
+
+      it("should reject non-http protocols", () => {
+        expect(() => validateAndNormalizeServerUrl("ftp://localhost:4190")).toThrow("Invalid protocol");
+      });
+
+      it("should reject ws:// protocol", () => {
+        expect(() => validateAndNormalizeServerUrl("ws://localhost:4190")).toThrow("Invalid protocol");
+      });
+    });
+  });
+  ```
+- [ ] **2.3.5** Run `bun test tests/unit/loop.test.ts` to verify tests pass
 
 ---
 
-## Phase 3: Fix Keyboard Event Registration
+## Phase 3: Add Health Check Function
 
-The `useKeyboard` hook relies on `onMount` which may not be firing.
+### 3.1 Create ServerHealthResult type
 
-- [x] **3.1** Verify `useKeyboard` hook is being called:
-  - Add logging inside the `useKeyboard` callback in `App` component
-  - Check if the callback is ever invoked
-  
-  **Completed (2025-01-05):**
-  - Added log statement before `useKeyboard` call: `"useKeyboard hook being registered (component body)"`
-  - Added detailed logging inside the callback with all KeyEvent properties: `name`, `ctrl`, `meta`, `shift`, `sequence`, `eventType`
-  - Added `onMount` hook to verify mounting fires (critical because `useKeyboard` registers its handler inside `onMount`, not during component body)
-  - Simplified key extraction to use `e.name` directly since that's the correct property per OpenTUI's KeyEvent class
-  - TypeScript compiles successfully
-  
-  **Key finding from research:** `useKeyboard` in `@opentui/solid` registers the callback inside `onMount`, NOT immediately during component body execution. This means if `onMount` doesn't fire, keyboard events won't work. The added `onMount` log will help diagnose this.
+- [ ] **3.1.1** Open `src/loop.ts`
+- [ ] **3.1.2** Add the following type after `isLocalhost` function:
+  ```typescript
+  /**
+   * Result of a server health check.
+   */
+  type ServerHealthResult =
+    | { ok: true }
+    | { ok: false; reason: "unreachable" | "unhealthy" };
+  ```
 
-- [x] **3.2** Check if keyboard events are reaching the renderer:
-  - Add logging to verify `renderer.keyInput` exists
-  - Add a direct listener to `renderer.keyInput.on("keypress", ...)` for debugging
-  
-  **Completed (2025-01-05):**
-  - Added `keyInput` existence check that logs: `exists`, `type`, `hasOnMethod`
-  - Added direct debug listener to `renderer.keyInput.on("keypress", ...)` that logs:
-    - `name`: the key name
-    - `sequence`: the escape sequence
-    - `eventType`: press/release
-  - This bypasses the `useKeyboard` hook entirely to verify if events reach the renderer at all
-  - The debug listener is added during component body execution (not onMount), so it works regardless of lifecycle timing
-  - If this listener fires but `useKeyboard` doesn't, it proves `onMount` is the issue
+### 3.2 Create checkServerHealth function
 
-- [x] **3.3** Add `useKittyKeyboard` option to render config:
-  - OpenCode uses `useKittyKeyboard: {}` in their render options
-  - Add this to ralph's render call in `src/app.tsx`:
-    ```typescript
-    await render(
-      () => <App ... />,
-      {
-        targetFps: 15,
-        exitOnCtrlC: false,
-        useKittyKeyboard: {},  // ADD THIS
+- [ ] **3.2.1** Add the following function after `ServerHealthResult` type:
+  ```typescript
+  /**
+   * Check if a server is healthy.
+   * Composes timeout with optional abort signal for user cancellation.
+   */
+  async function checkServerHealth(
+    url: string,
+    timeoutMs: number,
+    abortSignal?: AbortSignal
+  ): Promise<ServerHealthResult> {
+    try {
+      const signals: AbortSignal[] = [AbortSignal.timeout(timeoutMs)];
+      if (abortSignal) {
+        signals.push(abortSignal);
       }
+      
+      const response = await fetch(`${url}/global/health`, {
+        signal: AbortSignal.any(signals),
+      });
+      
+      if (!response.ok) {
+        return { ok: false, reason: "unhealthy" };
+      }
+      
+      const data = await response.json();
+      return data.healthy === true 
+        ? { ok: true } 
+        : { ok: false, reason: "unhealthy" };
+    } catch {
+      return { ok: false, reason: "unreachable" };
+    }
+  }
+  ```
+- [ ] **3.2.2** Run `bun run typecheck` to verify no errors
+
+### 3.3 Write unit tests for health check
+
+- [ ] **3.3.1** Open `tests/unit/loop.test.ts`
+- [ ] **3.3.2** Export `checkServerHealth` from `src/loop.ts`
+- [ ] **3.3.3** Add import for `checkServerHealth` in test file
+- [ ] **3.3.4** Add the following test suite:
+  ```typescript
+  describe("checkServerHealth", () => {
+    it("should return ok:true when server responds with healthy:true", async () => {
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = mock(() => 
+        Promise.resolve(new Response(JSON.stringify({ healthy: true }), { status: 200 }))
+      );
+      
+      const result = await checkServerHealth("http://localhost:4190", 1000);
+      expect(result).toEqual({ ok: true });
+      
+      globalThis.fetch = originalFetch;
+    });
+
+    it("should return ok:false reason:unhealthy when healthy:false", async () => {
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = mock(() => 
+        Promise.resolve(new Response(JSON.stringify({ healthy: false }), { status: 200 }))
+      );
+      
+      const result = await checkServerHealth("http://localhost:4190", 1000);
+      expect(result).toEqual({ ok: false, reason: "unhealthy" });
+      
+      globalThis.fetch = originalFetch;
+    });
+
+    it("should return ok:false reason:unhealthy on non-200 response", async () => {
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = mock(() => 
+        Promise.resolve(new Response("error", { status: 500 }))
+      );
+      
+      const result = await checkServerHealth("http://localhost:4190", 1000);
+      expect(result).toEqual({ ok: false, reason: "unhealthy" });
+      
+      globalThis.fetch = originalFetch;
+    });
+
+    it("should return ok:false reason:unreachable on network error", async () => {
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = mock(() => Promise.reject(new Error("Network error")));
+      
+      const result = await checkServerHealth("http://localhost:4190", 1000);
+      expect(result).toEqual({ ok: false, reason: "unreachable" });
+      
+      globalThis.fetch = originalFetch;
+    });
+  });
+  ```
+- [ ] **3.3.5** Run `bun test tests/unit/loop.test.ts` to verify tests pass
+
+---
+
+## Phase 4: Add External Server Connection Function
+
+### 4.1 Create connectToExternalServer function
+
+- [ ] **4.1.1** Open `src/loop.ts`
+- [ ] **4.1.2** Add the following function after `checkServerHealth`:
+  ```typescript
+  /**
+   * Connect to an external OpenCode server at the specified URL.
+   * Validates the URL format and server health before returning.
+   * 
+   * NOTE: This function only returns connection info. The actual client
+   * is created by runLoop() using createOpencodeClient() with createTimeoutlessFetch().
+   * 
+   * @throws Error if URL is invalid or server is not healthy
+   */
+  async function connectToExternalServer(
+    url: string,
+    options?: { timeoutMs?: number; signal?: AbortSignal }
+  ): Promise<{ url: string; close(): void; attached: boolean }> {
+    const timeoutMs = options?.timeoutMs ?? 5000;
+    
+    const normalizedUrl = validateAndNormalizeServerUrl(url);
+    
+    // Warn about non-HTTPS for non-localhost (logged to .ralph-log for debugging)
+    if (!normalizedUrl.startsWith("https://") && !isLocalhost(normalizedUrl)) {
+      log("loop", "WARNING: Using insecure HTTP connection to non-localhost server", { 
+        url: normalizedUrl 
+      });
+    }
+    
+    // Check server health with timeout (and optional user abort signal)
+    const health = await checkServerHealth(normalizedUrl, timeoutMs, options?.signal);
+    if (!health.ok) {
+      const message = health.reason === "unreachable" 
+        ? `Cannot connect to server at ${normalizedUrl}` 
+        : `Server unhealthy at ${normalizedUrl}`;
+      throw new Error(message);
+    }
+    
+    log("loop", "Connected to external server", { url: normalizedUrl });
+    
+    return {
+      url: normalizedUrl,
+      close: () => {}, // No-op - we don't manage external servers
+      attached: true,
+    };
+  }
+  ```
+- [ ] **4.1.3** Run `bun run typecheck` to verify no errors
+
+### 4.2 Write unit tests for connectToExternalServer
+
+- [ ] **4.2.1** Export `connectToExternalServer` from `src/loop.ts`
+- [ ] **4.2.2** Add import in `tests/unit/loop.test.ts`
+- [ ] **4.2.3** Add the following test suite:
+  ```typescript
+  describe("connectToExternalServer", () => {
+    it("should return connection info for healthy server", async () => {
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = mock(() => 
+        Promise.resolve(new Response(JSON.stringify({ healthy: true }), { status: 200 }))
+      );
+      
+      const result = await connectToExternalServer("http://localhost:4190");
+      expect(result.url).toBe("http://localhost:4190");
+      expect(result.attached).toBe(true);
+      expect(typeof result.close).toBe("function");
+      
+      globalThis.fetch = originalFetch;
+    });
+
+    it("should throw on invalid URL", async () => {
+      await expect(connectToExternalServer("not-a-url")).rejects.toThrow("Invalid URL format");
+    });
+
+    it("should throw on unreachable server", async () => {
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = mock(() => Promise.reject(new Error("Network error")));
+      
+      await expect(connectToExternalServer("http://localhost:4190")).rejects.toThrow("Cannot connect");
+      
+      globalThis.fetch = originalFetch;
+    });
+
+    it("should throw on unhealthy server", async () => {
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = mock(() => 
+        Promise.resolve(new Response(JSON.stringify({ healthy: false }), { status: 200 }))
+      );
+      
+      await expect(connectToExternalServer("http://localhost:4190")).rejects.toThrow("Server unhealthy");
+      
+      globalThis.fetch = originalFetch;
+    });
+  });
+  ```
+- [ ] **4.2.4** Run `bun test tests/unit/loop.test.ts` to verify tests pass
+
+---
+
+## Phase 5: Update getOrCreateOpencodeServer
+
+### 5.1 Update function signature
+
+- [ ] **5.1.1** Open `src/loop.ts`
+- [ ] **5.1.2** Locate `getOrCreateOpencodeServer` function (around line 35)
+- [ ] **5.1.3** Update the options parameter type to add:
+  ```typescript
+  async function getOrCreateOpencodeServer(options: {
+    signal?: AbortSignal;
+    port?: number;
+    hostname?: string;
+    serverUrl?: string;        // ADD THIS
+    serverTimeoutMs?: number;  // ADD THIS
+  }): Promise<{ url: string; close(): void; attached: boolean }> {
+  ```
+- [ ] **5.1.4** Run `bun run typecheck` to verify no errors
+
+### 5.2 Add external server connection logic
+
+- [ ] **5.2.1** Add the following code at the start of `getOrCreateOpencodeServer` function body (before existing logic):
+  ```typescript
+  // If explicit server URL provided, connect to it directly
+  if (options.serverUrl) {
+    return connectToExternalServer(options.serverUrl, {
+      timeoutMs: options.serverTimeoutMs,
+      signal: options.signal,
+    });
+  }
+  ```
+- [ ] **5.2.2** Run `bun run typecheck` to verify no errors
+- [ ] **5.2.3** Run `bun test` to verify all existing tests still pass
+
+---
+
+## Phase 6: Update runLoop to Pass Server Options
+
+### 6.1 Update runLoop server acquisition
+
+- [ ] **6.1.1** Open `src/loop.ts`
+- [ ] **6.1.2** Locate the call to `getOrCreateOpencodeServer` in `runLoop` (around line 120)
+- [ ] **6.1.3** Update the call to pass the new options:
+  ```typescript
+  server = await getOrCreateOpencodeServer({ 
+    signal, 
+    port: DEFAULT_PORT,
+    serverUrl: options.serverUrl,
+    serverTimeoutMs: options.serverTimeoutMs,
+  });
+  ```
+- [ ] **6.1.4** Run `bun run typecheck` to verify no errors
+- [ ] **6.1.5** Run `bun test` to verify all tests pass
+
+---
+
+## Phase 7: Update CLI Argument Parsing
+
+### 7.1 Update config loading
+
+- [ ] **7.1.1** Open `src/index.ts`
+- [ ] **7.1.2** Locate `loadGlobalConfig()` function (lines 21-32)
+- [ ] **7.1.3** The function already returns `RalphConfig` which now includes `server` and `serverTimeout` fields
+- [ ] **7.1.4** Verify the JSON parsing will pick up these new fields automatically (it will, since it uses `as RalphConfig`)
+
+### 7.2 Add --server CLI option
+
+- [ ] **7.2.1** Locate the yargs configuration (around line 130)
+- [ ] **7.2.2** Add the following option after the `--reset` option:
+  ```typescript
+  .option("server", {
+    alias: "s",
+    type: "string",
+    description: "URL of existing OpenCode server to connect to",
+    default: globalConfig.server,
+  })
+  ```
+- [ ] **7.2.3** Run `bun run typecheck` to verify no errors
+
+### 7.3 Add --server-timeout CLI option
+
+- [ ] **7.3.1** Add the following option after `--server`:
+  ```typescript
+  .option("server-timeout", {
+    type: "number",
+    description: "Health check timeout in ms for external server",
+    default: globalConfig.serverTimeout ?? 5000,
+  })
+  ```
+- [ ] **7.3.2** Run `bun run typecheck` to verify no errors
+
+### 7.4 Pass options to LoopOptions
+
+- [ ] **7.4.1** Locate the `LoopOptions` creation (around line 228)
+- [ ] **7.4.2** Update to include new fields:
+  ```typescript
+  const loopOptions: LoopOptions = {
+    planFile: argv.plan,
+    model: argv.model,
+    prompt: argv.prompt || "",
+    serverUrl: argv.server,
+    serverTimeoutMs: argv.serverTimeout,
+  };
+  ```
+- [ ] **7.4.3** Run `bun run typecheck` to verify no errors
+- [ ] **7.4.4** Run `bun test` to verify all tests pass
+
+---
+
+## Phase 8: Update Integration Tests
+
+### 8.1 Test that createOpencodeServer is not called when serverUrl provided
+
+- [ ] **8.1.1** Open `tests/integration/ralph-flow.test.ts`
+- [ ] **8.1.2** Add a new test case:
+  ```typescript
+  it("should not call createOpencodeServer when serverUrl is provided", async () => {
+    // Mock fetch for health check
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock(() => 
+      Promise.resolve(new Response(JSON.stringify({ healthy: true }), { status: 200 }))
     );
-    ```
-  
-  **Completed (2025-01-05):**
-  - Added `useKittyKeyboard: {}` to render options in `src/app.tsx` at line 78
-  - This enables the Kitty keyboard protocol for improved key event handling
-  - TypeScript compiles successfully
 
-- [x] **3.4** Add `renderer.disableStdoutInterception()` call:
-  - OpenCode calls this right after getting the renderer
-  - Add in `App` component: `renderer.disableStdoutInterception()`
-  - This prevents OpenTUI from capturing stdout which may interfere
-  
-  **Completed (2025-01-05):**
-  - Added `renderer.disableStdoutInterception()` call immediately after `useRenderer()` in the App component
-  - Matches OpenCode's pattern at line 169-170 of their app.tsx
-  - TypeScript compiles successfully
+    const options: LoopOptions = {
+      planFile: testPlanFile,
+      model: "anthropic/claude-sonnet-4",
+      prompt: "Test prompt for {plan}",
+      serverUrl: "http://localhost:4190",
+      serverTimeoutMs: 1000,
+    };
 
-- [x] **3.5** Fix keyboard event property access:
-  - Current code uses `(e as any).key ?? (e as any).name ?? (e as any).sequence`
-  - OpenTUI's `KeyEvent` type has `.name` property
-  - Simplify to use `e.name` directly with proper typing
-  
-  **Completed (2025-01-05):**
-  - Added import: `import type { KeyEvent } from "@opentui/core";`
-  - Added explicit `KeyEvent` type annotation to the `useKeyboard` callback parameter
-  - Simplified key extraction from `String(e.name ?? "").toLowerCase()` to `e.name.toLowerCase()`
-  - Removed all `(e as any)` casts - now uses `e.ctrl`, `e.meta` directly with proper typing
-  - TypeScript compiles successfully with no errors
+    const persistedState: PersistedState = {
+      startTime: Date.now(),
+      initialCommitHash: "abc123",
+      iterationTimes: [],
+      planFile: testPlanFile,
+    };
 
----
+    const callbacks = createTestCallbacks();
+    const controller = new AbortController();
 
-## Phase 4: Remove Conflicting stdin Handler
+    // Create .ralph-done to stop immediately
+    cleanupFiles.push(".ralph-done");
+    await Bun.write(".ralph-done", "");
 
-The fallback stdin handler in `src/index.ts` may conflict with OpenTUI's keyboard handling.
+    await runLoop(options, persistedState, callbacks, controller.signal);
 
-- [x] **4.1** Understand the conflict:
-  - OpenTUI sets stdin to raw mode for keyboard handling
-  - Ralph's `process.stdin.on("data")` handler may interfere
-  - Document which handler should take precedence
-  
-  **Findings (2025-01-05):**
-  1. **OpenCode does NOT use fallback stdin handlers** - OpenCode only uses `process.stdin.on("data")` temporarily for querying terminal background color via OSC escape sequences, NOT for keyboard input. All keyboard handling goes through `useKeyboard` exclusively.
-  2. **OpenTUI sets up stdin in raw mode** - In `setupInput()`, OpenTUI calls `stdin.setRawMode(true)`, registers its own `stdin.on("data")` handler, and uses `StdinBuffer` to properly parse escape sequences.
-  3. **Multiple listeners cause conflict** - Node.js allows multiple `stdin.on("data")` listeners. Both Ralph's handler AND OpenTUI's handler receive the same data, leading to:
-     - Double processing: "q" triggers both `requestQuit()` and `useKeyboard` callback
-     - Potential interference with escape sequence detection in OpenTUI's `StdinBuffer`
-     - Redundancy since `useKeyboard` in `src/app.tsx` already handles "q" and Ctrl+C
-  4. **Recommendation: Remove Ralph's stdin handler** - OpenTUI expects exclusive control over stdin. The `useKeyboard` hook provides the proper quit functionality through OpenTUI's official API.
+    // Verify createOpencodeServer was NOT called (since serverUrl was provided)
+    // The mock at line 77-82 tracks this
+    const { createOpencodeServer } = await import("@opencode-ai/sdk");
+    // Note: Due to how the mock is set up, we verify by checking the connection logic worked
+    
+    globalThis.fetch = originalFetch;
+  });
+  ```
+- [ ] **8.1.3** Run `bun test tests/integration/ralph-flow.test.ts` to verify test passes
 
-- [x] **4.2** Remove the fallback stdin handler:
-  - Delete the `process.stdin.on("data")` block in `src/index.ts`
-  - The keyboard handling should be done entirely through OpenTUI's `useKeyboard`
-  
-  **Completed (2025-01-05):**
-  - Removed the `process.stdin.on("data")` handler block from `src/index.ts`
-  - Added explanatory comment noting why this handler was removed
-  - OpenTUI now has exclusive control over stdin for keyboard handling
-  - The `useKeyboard` hook in `src/app.tsx` handles 'q' and Ctrl+C quit actions
+### 8.2 Test connection error handling
 
-- [x] **4.3** If fallback is needed, make it conditional:
-  - Only add stdin handler if OpenTUI keyboard handling fails
-  - Add a flag to detect if keyboard events are being received
-  - Fall back to raw stdin only as last resort
-  
-  **Completed (2025-01-05):**
-  - Added `onKeyboardEvent` callback prop to `App` component and `startApp` function
-  - In `src/index.ts`: implemented conditional fallback with 5-second timeout
-  - Fallback only activates if no OpenTUI keyboard events received within timeout
-  - Once OpenTUI keyboard is confirmed working, fallback is permanently disabled
-  - Fallback handler supports 'q' quit, Ctrl+C quit, and 'p' pause toggle
-  - Cleanup properly clears the fallback timeout
-
-- [x] **4.4** Test keyboard handling without fallback:
-  - Remove the stdin handler
-  - Verify 'q' and 'p' keys work through OpenTUI
-  
-  **Completed (2025-01-05):**
-  - Verified TypeScript compiles successfully with `bun run typecheck`
-  - Analyzed code structure to confirm keyboard handling is properly configured:
-    - `useKeyboard` in `src/app.tsx` handles 'q' (quit), 'p' (pause toggle), and Ctrl+C (quit)
-    - Callback is properly typed with `KeyEvent` from `@opentui/core`
-    - `onKeyboardEvent` prop signals to `src/index.ts` when OpenTUI keyboard is working
-  - Fallback handler in `src/index.ts` is purely conditional:
-    - Only activates after 5-second timeout if NO OpenTUI events received
-    - Once `keyboardWorking=true` (set by `onKeyboardEvent` callback), fallback is permanently disabled
-    - Fallback code explicitly checks `if (keyboardWorking) return;` before processing
-  - The stdin handler is NOT removed but is properly conditional and non-interfering
-  - Note: Manual testing requires running the TUI interactively, but code analysis confirms the implementation follows OpenCode's pattern and should work correctly
-
----
-
-## Phase 5: Improve Render Configuration
-
-Match opencode's render configuration for consistency.
-
-- [x] **5.1** Review opencode's full render options:
-  - `targetFps: 60` (ralph uses 15)
-  - `gatherStats: false`
-  - `exitOnCtrlC: false`
-  - `useKittyKeyboard: {}`
-  - `consoleOptions` with keybindings
-  
-  **Findings (2025-01-05):**
-  OpenCode's render options in `.reference/opencode/packages/opencode/src/cli/cmd/tui/app.tsx` (lines 148-161):
+- [ ] **8.2.1** Add another test case:
   ```typescript
+  it("should call onError when serverUrl is unreachable", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock(() => Promise.reject(new Error("Network error")));
+
+    const options: LoopOptions = {
+      planFile: testPlanFile,
+      model: "anthropic/claude-sonnet-4",
+      prompt: "Test prompt for {plan}",
+      serverUrl: "http://unreachable:4190",
+      serverTimeoutMs: 100,
+    };
+
+    const persistedState: PersistedState = {
+      startTime: Date.now(),
+      initialCommitHash: "abc123",
+      iterationTimes: [],
+      planFile: testPlanFile,
+    };
+
+    const callbacks = createTestCallbacks();
+    const controller = new AbortController();
+
+    await expect(runLoop(options, persistedState, callbacks, controller.signal))
+      .rejects.toThrow("Cannot connect");
+
+    // Verify onError was called
+    expect(callbackOrder).toContain(expect.stringMatching(/^onError:/));
+
+    globalThis.fetch = originalFetch;
+  });
+  ```
+- [ ] **8.2.2** Run `bun test tests/integration/ralph-flow.test.ts` to verify test passes
+
+---
+
+## Phase 9: Update Documentation
+
+### 9.1 Update README.md usage table
+
+- [ ] **9.1.1** Open `README.md`
+- [ ] **9.1.2** Locate the usage table (around line 57)
+- [ ] **9.1.3** Add rows for new options:
+  ```markdown
+  | `--server, -s` | (none) | OpenCode server URL to connect to |
+  | `--server-timeout` | `5000` | Health check timeout in ms |
+  ```
+- [ ] **9.1.4** Verify table formatting is correct
+
+### 9.2 Add example usage section
+
+- [ ] **9.2.1** Add the following after the usage table:
+  ```markdown
+  ### Connecting to an Existing Server
+
+  Ralph can connect to an already-running OpenCode server instead of starting its own:
+
+  ```bash
+  # Connect to local server on custom port
+  ralph --server http://localhost:5000
+
+  # Connect to remote server (requires shared filesystem)
+  ralph -s http://192.168.1.100:4190
+
+  # With custom timeout
+  ralph --server http://localhost:4190 --server-timeout 10000
+  ```
+
+  **Important:** Ralph reads `plan.md` and git state locally. When connecting to a remote server, ensure both machines have access to the same working directory (e.g., via NFS mount or the same repo checkout).
+  ```
+
+### 9.3 Document config file options
+
+- [ ] **9.3.1** Locate the existing config documentation or create a new section after "Files"
+- [ ] **9.3.2** Add:
+  ```markdown
+  ## Configuration
+
+  Ralph reads configuration from `~/.config/ralph/config.json`:
+
+  ```json
   {
-    targetFps: 60,           // High FPS for smooth UI
-    gatherStats: false,      // Disable stats gathering for performance
-    exitOnCtrlC: false,      // Manual Ctrl+C handling via useKeyboard
-    useKittyKeyboard: {},    // Enable Kitty keyboard protocol
-    consoleOptions: {        // Console copy-selection support
-      keyBindings: [{ name: "y", ctrl: true, action: "copy-selection" }],
-      onCopySelection: (text) => { Clipboard.copy(text).catch(...) },
-    },
+    "model": "opencode/claude-opus-4-5",
+    "plan": "plan.md",
+    "server": "http://localhost:4190",
+    "serverTimeout": 5000
   }
   ```
-  
-  **Ralph's current options** in `src/app.tsx` (lines 95-99):
-  ```typescript
-  {
-    targetFps: 15,           // Deliberately low for CPU efficiency
-    exitOnCtrlC: false,      // Already correct
-    useKittyKeyboard: {},    // Already added in Phase 3
-  }
+
+  CLI arguments override config file values.
   ```
-  
-  **Key differences:**
-  1. **targetFps**: OpenCode uses 60, Ralph uses 15 for lower CPU usage (intentional choice)
-  2. **gatherStats**: OpenCode explicitly sets `false`, Ralph doesn't set it (defaults to false)
-  3. **consoleOptions**: OpenCode has clipboard keybindings for Ctrl+Y copy-selection; Ralph doesn't need this for its simple logging TUI
-
-- [x] **5.2** Update ralph's render options:
-  - Increase `targetFps` to 30 or 60 (test performance impact)
-  - Add `useKittyKeyboard: {}`
-  - Keep `exitOnCtrlC: false` (we handle quit manually)
-  
-  **Completed (2025-01-05):**
-  - Changed `targetFps` from 15 to 30 (balanced: smoother than 15, less CPU than 60)
-  - Added `gatherStats: false` for performance (matches OpenCode pattern)
-  - `useKittyKeyboard: {}` already present from Phase 3
-  - `exitOnCtrlC: false` already present
-  - TypeScript compiles successfully
-
-- [x] **5.3** Consider adding console options:
-  - OpenCode has copy-selection keybindings
-  - May not be necessary for ralph but worth noting
-  
-  **Decision (2025-01-05):**
-  - **Not implementing** - Ralph's TUI is a simple read-only logging display
-  - No text selection or copy functionality is needed for this use case
-  - OpenCode's `consoleOptions` with `Ctrl+Y` copy-selection is for their interactive console component
-  - If copy-paste is needed in the future, this can be revisited
 
 ---
 
-## Phase 6: Fix the App Exit Flow
+## Phase 10: Final Testing and Cleanup
 
-Ensure clean shutdown when 'q' is pressed.
+### 10.1 Run full test suite
 
-- [x] **6.1** Review current quit flow:
-  - `useKeyboard` handler calls `renderer.destroy()` and `props.onQuit()`
-  - `onQuit` callback aborts the loop and resolves `exitPromise`
-  - Verify this chain is being executed
-  
-  **Completed (2025-01-05):**
-  - Reviewed quit flow chain: `useKeyboard` callback → `renderer.destroy()` → `props.onQuit()` → `exitResolve()` → `exitPromise` resolves → finally block → `process.exit(0)`
-  - **Fixed**: Removed `(renderer as any).destroy?.()` cast - `destroy()` is properly typed on `CliRenderer` class
-  - **Added**: `renderer.setTerminalTitle("")` call before `destroy()` to reset window title (matches OpenCode pattern in exit.tsx)
-  - Quit flow is correctly implemented and the chain executes as expected
+- [ ] **10.1.1** Run `bun test` to verify all tests pass
+- [ ] **10.1.2** Run `bun run typecheck` to verify no type errors
+- [ ] **10.1.3** Fix any failing tests or type errors
 
-- [x] **6.2** Ensure `renderer.destroy()` is called correctly:
-  - Current code: `(renderer as any).destroy?.()`
-  - The `?` optional chaining may be hiding issues
-  - Verify `destroy` method exists on renderer
-  
-  **Completed (2025-01-05):**
-  - Verified `renderer.destroy()` is now called directly without cast or optional chaining
-  - The fix was applied in task 6.1: removed `(renderer as any).destroy?.()` cast
-  - `destroy()` is properly typed on `CliRenderer` class from `@opentui/solid`
-  - Code at lines 315 and 325 in `src/app.tsx` calls `renderer.destroy()` directly
-  - TypeScript compiles successfully, confirming the method exists on the renderer type
+### 10.2 Manual testing checklist
 
-- [x] **6.3** Add logging to quit flow:
-  - Log when quit key is detected
-  - Log when `onQuit` callback is called
-  - Log when `exitPromise` resolves
-  
-  **Completed (2025-01-05):**
-  - Quit key detection: `log("app", "Quit via 'q' key")` at app.tsx:312 and `log("app", "Quit via Ctrl+C")` at app.tsx:322
-  - onQuit callback: `log("app", "onQuit called")` at app.tsx:77 and `log("main", "onQuit callback triggered")` at index.ts:355
-  - exitPromise resolve: `log("main", "Exit received, cleaning up")` at index.ts:504
-  - Full quit flow logging chain: quit key → onQuit → exitResolve → exitPromise resolves → finally block
+- [ ] **10.2.1** Test: `ralph` (no args) - should work as before (auto-detect or start server)
+- [ ] **10.2.2** Test: `ralph --server http://localhost:4190` with server running - should connect
+- [ ] **10.2.3** Test: `ralph --server http://localhost:4190` without server - should show "Cannot connect" error
+- [ ] **10.2.4** Test: `ralph --server not-a-url` - should show "Invalid URL format" error
+- [ ] **10.2.5** Test: `ralph --server http://localhost:4190/api` - should show "origin only" error
+- [ ] **10.2.6** Test: `ralph -s http://localhost:4190` - alias should work
+- [ ] **10.2.7** Test: Create config file with `server` option, run `ralph` - should use config value
+- [ ] **10.2.8** Test: Config file + CLI override - CLI should take precedence
 
-- [x] **6.4** Test quit flow end-to-end:
-  - Start ralph
-  - Press 'q'
-  - Verify process exits cleanly
-  - Check logs for expected sequence
-  
-  **Completed (2025-01-05):**
-  - Ran `bun bin/ralph.ts` with input "n" (fresh start) to capture TUI output
-  - TUI renders correctly: header with "starting", "iteration 1", "0/0 tasks", footer with "(q) interrupt (p) pause"
-  - Checked `.ralph.log` for quit flow logging
-  - **CRITICAL FINDING**: `onMount` is NOT firing! The log shows:
-    - `[app] useKeyboard hook being registered (component body)` ✓
-    - `[app] render() completed, state setters ready` ✓
-    - `[main] Enabling fallback stdin handler (OpenTUI keyboard not detected)` ← 5 sec timeout triggered
-    - **MISSING**: `onMount fired - keyboard handlers should now be registered` ← never logged!
-  - This confirms `onMount` lifecycle hook does not fire reliably in @opentui/solid
-  - `useKeyboard` registers its actual listener inside OpenTUI's `onMount`, so keyboard events don't work
-  - The fallback stdin handler (added in task 4.3) activates after 5 seconds as expected
-  - **Result**: Quit via 'q' works ONLY through the fallback handler, not through OpenTUI's `useKeyboard`
-  - **Root cause**: @opentui/solid `onMount` timing issue - needs investigation or workaround
+### 10.3 Verify HTTP warning in logs
+
+- [ ] **10.3.1** Run `ralph --server http://192.168.1.1:4190` (non-localhost HTTP)
+- [ ] **10.3.2** Check `.ralph-log` for warning message about insecure connection
+- [ ] **10.3.3** Run `ralph --server https://example.com:4190` - should NOT log warning
+- [ ] **10.3.4** Run `ralph --server http://localhost:4190` - should NOT log warning (localhost is ok)
+
+### 10.4 Code review checklist
+
+- [ ] **10.4.1** All new functions have JSDoc comments
+- [ ] **10.4.2** No `console.log` statements left in code
+- [ ] **10.4.3** Error messages are clear and actionable
+- [ ] **10.4.4** All exports are intentional (don't export internal helpers)
+- [ ] **10.4.5** No TODO/FIXME comments left unresolved
+
+### 10.5 Final cleanup
+
+- [ ] **10.5.1** Remove any debug logging added during development
+- [ ] **10.5.2** Ensure exports are minimal (only export what's needed for tests)
+- [ ] **10.5.3** Run `bun test` one final time
+- [ ] **10.5.4** Run `bun run typecheck` one final time
 
 ---
 
-## Phase 7: Testing and Validation
+## Quick Reference
 
-Verify all fixes work together.
+### Files Modified
 
-- [x] **7.1** Create a test checklist:
-  - [x] TUI renders on startup
-  - [x] Header shows correct status ("starting", "iteration 1", "0/0 tasks", etc.)
-  - [x] Log area shows events (empty on startup, populates with tool events during loop)
-  - [x] Footer shows stats ("+0 / -0 · 0 commits · 0s")
-  - [x] 'q' key quits the app (via fallback stdin handler after 5s timeout)
-  - [x] 'p' key toggles pause (via fallback stdin handler)
-  - [x] Ctrl+C quits the app (via signal handler)
-  - [x] State updates reflect in UI (verified via createEffect logging in .ralph.log)
-  
-  **Verification Results (2026-01-05):**
-  - TUI renders correctly with all visual components
-  - **KNOWN ISSUE**: `onMount` lifecycle hook in `@opentui/solid` does NOT fire reliably
-  - This means `useKeyboard` callback never gets registered (it registers inside `onMount`)
-  - Workaround in place: Fallback stdin handler activates after 5 seconds if no OpenTUI keyboard events received
-  - All keyboard functionality works via the fallback handler
-  - State changes are reactive and trigger UI updates (verified via `createEffect` logging)
-
-- [x] **7.2** Test on different terminals:
-  - [x] Windows Terminal - Primary dev environment, works correctly
-  - [x] PowerShell - Same console subsystem as Windows Terminal, should work
-  - [x] CMD - Same console subsystem, should work
-  - [x] Terminal-specific considerations documented below
-  
-  **Terminal Compatibility Analysis (2026-01-05):**
-  
-  **What works across all Windows terminals:**
-  - TUI rendering via @opentui/solid (uses Windows console APIs)
-  - Fallback stdin handler (raw mode via `process.stdin.setRawMode(true)`)
-  - Signal handling (SIGINT, SIGTERM)
-  - State updates and reactive rendering
-  
-  **Terminal-specific code in ralph:**
-  1. `process.stdin.isTTY` check before setting raw mode (src/index.ts:296, src/prompt.ts:15)
-  2. Windows keepalive interval to prevent premature exit (src/index.ts:239)
-  3. Defensive `renderer.requestRender()` calls for Windows where automatic redraw can stall (src/app.tsx:223)
-  4. `renderer.setTerminalTitle("")` reset on exit (src/app.tsx:314, 324)
-  
-  **Kitty Keyboard Protocol:**
-  - Enabled via `useKittyKeyboard: {}` option
-  - Not supported by all terminals (Windows Terminal has partial support)
-  - Fallback stdin handler provides coverage regardless of protocol support
-  
-  **Known Limitations:**
-  - `onMount` not firing means `useKeyboard` never registers - relies on fallback stdin handler
-  - This is consistent across all terminals (not terminal-specific)
-  - Kitty keyboard protocol features may not work in older terminals or CMD
-
-- [x] **7.3** Test the loop integration:
-  - Run ralph with a real plan.md
-  - Verify iterations are logged
-  - Verify progress updates
-  - Verify tool events appear
-  
-  **Completed (2026-01-05):**
-  - Fixed integration test suite in `tests/integration/ralph-flow.test.ts`:
-    - Fixed mock method name: `promptAsync` → `prompt` to match actual SDK usage
-    - Added missing `server.connected` event to mock event stream (required to trigger `prompt` call)
-  - All 9 integration tests pass, verifying:
-    1. Callbacks are called in correct order during iteration
-    2. Tool events are captured with correct data (separator, spinner, tool events)
-    3. Session is created and prompt is sent via SDK
-    4. Task counts are parsed from plan file
-    5. `.ralph-done` file detection triggers `onComplete`
-    6. Clean exit when `.ralph-done` is created mid-iteration
-    7. Pause/resume callbacks work with `.ralph-pause` file
-    8. Clean exit on abort signal
-    9. State persistence is updated via `onIterationComplete` callback
-
-- [ ] **7.4** Test edge cases:
-  - Start with no plan.md file
-  - Start with invalid config
-  - Network errors during loop
-  - Rapid key presses
-
----
-
-## Phase 8: Cleanup and Documentation
-
-Remove debugging code and document findings.
-
-- [x] **8.1** Remove excessive logging:
-  - Keep essential logs for troubleshooting
-  - Remove verbose debug logs added during fix
-  - Consider log levels (debug vs info)
-  
-  **Completed (2026-01-05):**
-  - Removed debug logging from `src/app.tsx`:
-    - Removed renderer info dump and keyInput debug listener
-    - Removed `createEffect` that logged every state change
-    - Removed `onMount` verification log
-    - Removed verbose `useKeyboard` callback logging (kept only quit action logs)
-    - Removed unused imports: `createEffect`, `onMount`, `ToolEvent`
-  - Simplified verbose comments throughout `src/app.tsx`
-  - Kept essential logs: quit actions, onQuit callback
-  - TypeScript compiles successfully
-
-- [x] **8.2** Update AGENTS.md with findings:
-  - Document OpenTUI configuration requirements
-  - Document keyboard handling approach
-  - Note any Windows-specific considerations
-  
-  **Completed (2026-01-05):**
-  - Added "OpenTUI Configuration" section with render options and `disableStdoutInterception()` pattern
-  - Added "Keyboard Handling" section documenting the `onMount` lifecycle issue and fallback stdin workaround
-  - Added "Windows-Specific Considerations" section with keepalive, requestRender, TTY checks, and terminal title reset
-  - All findings from Phases 1-7 are now documented for future reference
-
-- [ ] **8.3** Update README if needed:
-  - Installation instructions
-  - Known issues
-  - Terminal compatibility
-
-- [x] **8.4** Clean up commented code:
-  - Remove backup code blocks
-  - Remove TODO comments that are resolved
-  - Ensure code is production-ready
-  
-  **Completed (2026-01-05):**
-  - Searched entire codebase for TODO, FIXME, HACK, XXX, BACKUP, ORIGINAL patterns - none found
-  - Reviewed all source files for commented-out code - none found
-  - Removed trailing blank lines from `src/components/header.tsx`
-  - Verified TypeScript compiles successfully
-  - Note: "Task 4.3:" comments in `src/index.ts` retained as useful documentation explaining why the fallback stdin pattern was implemented
-
----
-
-## Quick Reference: Key Files to Modify
-
-| File | Purpose |
+| File | Changes |
 |------|---------|
-| `bin/ralph.ts` | Entry point - remove subprocess |
-| `src/index.ts` | Main logic - remove stdin handler |
-| `src/app.tsx` | TUI component - fix keyboard, render config |
-| `bunfig.toml` | Bun config - ensure preload is set |
+| `src/state.ts` | Add `serverUrl`, `serverTimeoutMs` to `LoopOptions` |
+| `src/index.ts` | Add `server`, `serverTimeout` to `RalphConfig`, CLI args |
+| `src/loop.ts` | Add URL validation, health check, connection functions |
+| `tests/unit/loop.test.ts` | Add tests for new functions |
+| `tests/integration/ralph-flow.test.ts` | Add integration tests |
+| `tests/helpers/mock-factories.ts` | Update mock factory |
+| `README.md` | Document new options |
 
-## Quick Reference: OpenTUI Patterns from OpenCode
+### New Functions in src/loop.ts
 
-```typescript
-// Render call pattern
-render(
-  () => <App />,
-  {
-    targetFps: 60,
-    gatherStats: false,
-    exitOnCtrlC: false,
-    useKittyKeyboard: {},
-  }
-);
+1. `validateAndNormalizeServerUrl(url: string): string` - Validates and normalizes server URL
+2. `isLocalhost(url: string): boolean` - Checks if URL is localhost
+3. `checkServerHealth(url, timeoutMs, signal?): Promise<ServerHealthResult>` - Health check with timeout
+4. `connectToExternalServer(url, options?): Promise<{url, close, attached}>` - Connect to external server
 
-// Inside App component
-const renderer = useRenderer();
-renderer.disableStdoutInterception();
+### Key Behaviors
 
-// Keyboard handling
-useKeyboard((evt) => {
-  if (evt.name === "q" && !evt.ctrl && !evt.meta) {
-    // quit
-  }
-});
-```
+- `--server` provided: Skip auto-detect, connect directly to specified URL
+- No `--server`: Use existing behavior (auto-detect then start if needed)
+- Health check timeout: Default 5000ms, configurable via `--server-timeout`
+- HTTP warning: Logged to `.ralph-log` for non-localhost HTTP connections
+- Errors: Thrown and handled by existing error path at `src/loop.ts:303-307`
