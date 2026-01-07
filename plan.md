@@ -435,10 +435,10 @@
 - [x] Copy `zenburn.json` theme file
 
 #### Theme Index
-- [ ] Create `src/lib/themes/index.ts` file
-- [ ] Import all theme JSON files
-- [ ] Export `themes` map keyed by theme name
-- [ ] Export `themeNames` array for listing
+- [x] Create `src/lib/themes/index.ts` file
+- [x] Import all theme JSON files
+- [x] Export `themes` map keyed by theme name
+- [x] Export `themeNames` array for listing
 
 #### Theme Resolver
 - [ ] Create `src/lib/theme-resolver.ts` file
