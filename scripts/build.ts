@@ -90,6 +90,9 @@ for (const target of targets) {
     conditions: ["browser"], // Required for SolidJS client-side rendering
     tsconfig: "./tsconfig.json",
     plugins: [solidPlugin],
+    // Bun currently emits __promiseAll without a helper in compiled output.
+    // Inject a tiny helper to avoid runtime ReferenceError.
+    banner: "const __promiseAll = (args) => Promise.all(args);",
     sourcemap: "external",
     compile: {
       target: target.bunTarget as any,
