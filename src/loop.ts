@@ -562,6 +562,10 @@ export async function runLoop(
         callbacks.onIdleChanged(true);
 
         let receivedFirstEvent = false;
+        // Track streamed text parts by ID - stores text we've already logged
+        // so we only emit complete lines, not every streaming delta
+        const loggedTextByPartId = new Map<string, string>();
+        
         for await (const event of events.stream) {
           // When SSE connection is established, send the prompt
           // This ensures we don't miss any events due to race conditions
@@ -639,6 +643,7 @@ export async function runLoop(
             }
 
             // Reasoning/thought event - capture LLM text responses
+            // Only emit complete lines to avoid noisy streaming updates
             if (part.type === "text" && part.text) {
               // Set isIdle to false when first event arrives
               if (!receivedFirstEvent) {
@@ -646,23 +651,43 @@ export async function runLoop(
                 callbacks.onIdleChanged(false);
               }
 
-              // Truncate long reasoning text for display
-              const content = part.text;
-              const firstLine = content.split("\n")[0];
-              const truncated = firstLine.length > 80 
-                ? firstLine.slice(0, 77) + "..." 
-                : firstLine;
-
-              if (truncated.trim()) {
-                log("loop", "Reasoning", { text: truncated });
-                callbacks.onEvent({
-                  iteration,
-                  type: "reasoning",
-                  icon: "thought",
-                  text: truncated,
-                  timestamp: Date.now(),
-                  verbose: true,
-                });
+              const partId = part.id;
+              const previouslyLogged = loggedTextByPartId.get(partId) || "";
+              const fullText = part.text;
+              
+              // Find new content that hasn't been logged yet
+              const newContent = fullText.slice(previouslyLogged.length);
+              
+              // Split into lines - only emit lines that are complete (have \n after them)
+              const lines = newContent.split("\n");
+              
+              // Process all complete lines (all except the last one which may be partial)
+              for (let i = 0; i < lines.length - 1; i++) {
+                const line = lines[i].trim();
+                if (line) {
+                  // Truncate long lines for display
+                  const truncated = line.length > 80 
+                    ? line.slice(0, 77) + "..." 
+                    : line;
+                  
+                  log("loop", "Reasoning", { text: truncated });
+                  callbacks.onEvent({
+                    iteration,
+                    type: "reasoning",
+                    icon: "thought",
+                    text: truncated,
+                    timestamp: Date.now(),
+                    verbose: true,
+                  });
+                }
+              }
+              
+              // Update tracked position to include all complete lines we've logged
+              // Keep partial last line for next update
+              const completedLength = previouslyLogged.length + 
+                (lines.length > 1 ? newContent.lastIndexOf("\n") + 1 : 0);
+              if (completedLength > previouslyLogged.length) {
+                loggedTextByPartId.set(partId, fullText.slice(0, completedLength));
               }
             }
 
