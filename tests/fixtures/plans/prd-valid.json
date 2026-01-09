@@ -1,0 +1,20 @@
+[
+  {
+    "category": "functional",
+    "description": "Create the initial project scaffolding",
+    "steps": [
+      "Run the project generator",
+      "Verify the entry point builds"
+    ],
+    "passes": true
+  },
+  {
+    "category": "integration",
+    "description": "Wire up the API client",
+    "steps": [
+      "Configure the base URL",
+      "Ensure the client is used by the service layer"
+    ],
+    "passes": false
+  }
+]

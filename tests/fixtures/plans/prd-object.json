@@ -1,0 +1,22 @@
+{
+  "items": [
+    {
+      "category": "functional",
+      "description": "Render the dashboard view",
+      "steps": [
+        "Load the dashboard route",
+        "Verify widgets render"
+      ],
+      "passes": false
+    },
+    {
+      "category": "quality",
+      "description": "Add linting configuration",
+      "steps": [
+        "Add lint config file",
+        "Run lint with no errors"
+      ],
+      "passes": true
+    }
+  ]
+}

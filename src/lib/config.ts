@@ -16,6 +16,7 @@ export interface RalphConfig {
   adapter?: string;
   model?: string;
   plan?: string;
+  progress?: string;
   prompt?: string;
   promptFile?: string;
   server?: string;

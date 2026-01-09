@@ -1,0 +1,217 @@
+import { existsSync, mkdirSync } from "fs";
+import { dirname, extname, join } from "path";
+import { parsePrdItems, type PrdItem } from "./plan";
+
+export type InitOptions = {
+  planFile: string;
+  progressFile: string;
+  promptFile: string;
+  from?: string;
+  force?: boolean;
+};
+
+export type InitResult = {
+  created: string[];
+  skipped: string[];
+  warnings: string[];
+};
+
+const DEFAULT_CATEGORY = "functional";
+const DEFAULT_STEP = "Add verification steps for this item.";
+
+const PROMPT_TEMPLATE = `READ all of {{PLAN_FILE}} and {{PROGRESS_FILE}}.
+Pick ONE task with passes=false (prefer highest-risk/highest-impact).
+Keep changes small: one logical change per commit.
+Update {{PLAN_FILE}} by setting passes=true and adding notes or steps as needed.
+Append a brief entry to {{PROGRESS_FILE}} with what changed and why.
+Run feedback loops before committing:
+- bun run typecheck
+- bun test
+- bun run lint (if missing, note in {{PROGRESS_FILE}} and continue)
+Commit the change (include {{PLAN_FILE}} updates).
+ONLY do one task unless GLARINGLY OBVIOUS steps should run together.
+Quality bar: production code, maintainable, tests when appropriate.
+If you learn a critical operational detail, update AGENTS.md.
+When ALL tasks complete, create .ralph-done and output <promise>COMPLETE</promise>.
+NEVER GIT PUSH. ONLY COMMIT.
+`;
+
+function isMarkdownPath(path: string): boolean {
+  const ext = extname(path).toLowerCase();
+  return ext === ".md" || ext === ".markdown" || ext === ".mdx";
+}
+
+function resolvePlanTarget(planFile: string): { planFile: string; warning?: string } {
+  if (!isMarkdownPath(planFile)) {
+    return { planFile };
+  }
+
+  const target = join(dirname(planFile), "prd.json");
+  return {
+    planFile: target,
+    warning: `Preserving markdown plan "${planFile}" and writing PRD JSON to "${target}".`,
+  };
+}
+
+function ensureParentDir(path: string): void {
+  const dir = dirname(path);
+  if (dir === "." || dir === "/") return;
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
+  }
+}
+
+function extractTasksFromText(content: string): string[] {
+  const tasks: string[] = [];
+  const seen = new Set<string>();
+  let inCodeBlock = false;
+
+  for (const line of content.split("\n")) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("```")) {
+      inCodeBlock = !inCodeBlock;
+      continue;
+    }
+    if (inCodeBlock || !trimmed) continue;
+    if (trimmed.startsWith("#")) continue;
+
+    let match =
+      trimmed.match(/^- \[[ xX]\]\s+(.+)/) ??
+      trimmed.match(/^[-*+]\s+(.+)/) ??
+      trimmed.match(/^\d+[.)]\s+(.+)/);
+
+    if (!match) continue;
+    const task = match[1].trim();
+    if (!task) continue;
+    const key = task.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    tasks.push(task);
+  }
+
+  return tasks;
+}
+
+function createTemplateItems(): PrdItem[] {
+  return [
+    {
+      category: DEFAULT_CATEGORY,
+      description: "Define the first PRD item for this project.",
+      steps: [DEFAULT_STEP],
+      passes: false,
+    },
+  ];
+}
+
+function createPrdItemsFromTasks(tasks: string[]): PrdItem[] {
+  return tasks.map((task) => ({
+    category: DEFAULT_CATEGORY,
+    description: task,
+    steps: [DEFAULT_STEP],
+    passes: false,
+  }));
+}
+
+function buildProgressTemplate(planFile: string): string {
+  const timestamp = new Date().toISOString();
+  return `# Ralph Progress
+
+## Iteration 0 - Initialized ${timestamp}
+- Plan: ${planFile}
+- Notes: Initialized via ralph init.
+`;
+}
+
+async function writeFileIfNeeded(
+  path: string,
+  content: string,
+  force: boolean,
+  result: InitResult,
+): Promise<void> {
+  const file = Bun.file(path);
+  const exists = await file.exists();
+  if (exists && !force) {
+    result.skipped.push(path);
+    return;
+  }
+  ensureParentDir(path);
+  await Bun.write(path, content);
+  result.created.push(path);
+}
+
+export async function runInit(options: InitOptions): Promise<InitResult> {
+  const result: InitResult = { created: [], skipped: [], warnings: [] };
+  const resolvedPlan = resolvePlanTarget(options.planFile);
+  if (resolvedPlan.warning) {
+    result.warnings.push(resolvedPlan.warning);
+  }
+
+  let sourceText = "";
+  let sourcePath: string | null = null;
+
+  if (options.from) {
+    sourcePath = options.from;
+  } else {
+    const explicitPlan = Bun.file(options.planFile);
+    if (await explicitPlan.exists()) {
+      sourcePath = options.planFile;
+    } else {
+      const fallbackPlan = "plan.md";
+      const fallbackFile = Bun.file(fallbackPlan);
+      if (await fallbackFile.exists()) {
+        sourcePath = fallbackPlan;
+        result.warnings.push(`Found "${fallbackPlan}" and used it to seed PRD JSON.`);
+      }
+    }
+  }
+
+  if (sourcePath) {
+    const sourceFile = Bun.file(sourcePath);
+    if (await sourceFile.exists()) {
+      sourceText = await sourceFile.text();
+    } else {
+      result.warnings.push(`Source file not found: ${sourcePath}`);
+    }
+  } else {
+    result.warnings.push("No plan file found. Creating a template PRD.");
+  }
+
+  const trimmedSource = sourceText.trim();
+  const looksLikeJson = trimmedSource.startsWith("{") || trimmedSource.startsWith("[");
+  const parsedItems = sourceText ? parsePrdItems(sourceText) : null;
+  let prdItems: PrdItem[] = [];
+
+  if (parsedItems) {
+    prdItems = parsedItems;
+  } else if (sourceText) {
+    const tasks = extractTasksFromText(sourceText);
+    if (tasks.length > 0) {
+      prdItems = createPrdItemsFromTasks(tasks);
+    } else {
+      prdItems = createTemplateItems();
+      if (looksLikeJson) {
+        result.warnings.push("Invalid PRD JSON detected. Creating a template PRD instead.");
+      } else {
+        result.warnings.push("Unable to extract tasks from the source plan. Creating a template PRD instead.");
+      }
+    }
+  } else {
+    prdItems = createTemplateItems();
+  }
+  const planContent = JSON.stringify(prdItems, null, 2) + "\n";
+
+  await writeFileIfNeeded(resolvedPlan.planFile, planContent, Boolean(options.force), result);
+  await writeFileIfNeeded(
+    options.progressFile,
+    buildProgressTemplate(resolvedPlan.planFile),
+    Boolean(options.force),
+    result
+  );
+  await writeFileIfNeeded(options.promptFile, PROMPT_TEMPLATE, Boolean(options.force), result);
+
+  if (result.skipped.length > 0 && !options.force) {
+    result.warnings.push("Some files already existed. Re-run with --force to overwrite.");
+  }
+
+  return result;
+}

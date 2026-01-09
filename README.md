@@ -1,6 +1,6 @@
 # ralph
 
-AI agent loop for autonomous task execution. Reads a plan, picks one task, completes it, commits, repeats.
+AI agent loop for autonomous task execution. Reads a PRD, picks one task, completes it, commits, repeats.
 
 <img width="1714" height="1076" alt="image" src="https://github.com/user-attachments/assets/3dd85500-0164-44cd-8917-dfcbe787c09f" />
 
@@ -12,6 +12,9 @@ bun install -g @hona/ralph-cli
 
 # Or install dev snapshot (latest from dev branch)
 bun install -g @hona/ralph-cli@dev
+
+# Initialize PRD, progress log, and prompt
+ralph init
 
 # Run in any project directory
 ralph
@@ -30,10 +33,10 @@ bun run build:single  # compiles for current platform
 
 Ralph-driven development forces an AI agent to re-read full context every iteration, eliminating context drift. Each loop:
 
-1. Read `plan.md`
+1. Read `prd.json`
 2. Pick ONE task
 3. Complete it
-4. Commit (updating the plan in the same commit)
+4. Commit (updating the PRD in the same commit)
 5. Repeat until done
 
 The agent never pushes—only commits—so you maintain review control.
@@ -48,42 +51,37 @@ See: [ghuntley.com/ralph](https://ghuntley.com/ralph/) · [lukeparker.dev/stop-c
 ## Usage
 
 ```bash
-ralph                              # uses plan.md in current directory
-ralph --plan BACKLOG.md            # different plan file
+ralph                              # uses prd.json in current directory
+ralph --plan BACKLOG.json          # different PRD file
+ralph --progress progress.txt      # custom progress log
 ralph --model anthropic/claude-opus-4  # different model
 ralph --reset                      # start fresh, ignore previous state
+ralph init --from plan.md          # convert unstructured plan to PRD JSON
 ```
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--plan, -p` | `plan.md` | Plan file path |
+| `--plan, -p` | `prd.json` | PRD file path |
+| `--progress` | `progress.txt` | Progress log path |
 | `--model, -m` | `opencode/claude-opus-4-5` | Model (provider/model format) |
-| `--prompt` | see below | Custom prompt (`{plan}` placeholder) |
+| `--prompt` | see below | Custom prompt (`{plan}` and `{progress}` placeholders) |
+| `--prompt-file` | `.ralph-prompt.md` | Prompt file path |
 | `--reset, -r` | `false` | Reset state |
-| `--server, -s` | (none) | OpenCode server URL to connect to |
+| `--headless, -H` | `false` | CI-friendly output |
+| `--format` | `text` | Headless output format (text, jsonl, json) |
+| `--max-iterations` | (none) | Cap iterations (headless) |
+| `--max-time` | (none) | Cap runtime seconds (headless) |
+| `--server, -s` | (none) | OpenCode server URL |
 | `--server-timeout` | `5000` | Health check timeout in ms |
+| `--agent, -a` | (none) | Agent name (e.g., build/plan/general) |
+| `--debug, -d` | `false` | Manual session creation |
+| `--yes` | `false` | Auto-confirm prompts |
+| `--auto-reset` | `true` | Auto-reset when no TTY prompt |
 
 **Default prompt:**
 ```
-READ all of {plan}. Pick ONE task. If needed, verify via web/code search (this applies to packages, knowledge, deterministic data - NEVER VERIFY EDIT TOOLS WORKED OR THAT YOU COMMITED SOMETHING. BE PRAGMATIC ABOUT EVERYTHING). Complete task. Commit change (update the plan.md in the same commit). ONLY do one task unless GLARINGLY OBVIOUS steps should run together. Update {plan}. If you learn a critical operational detail, update AGENTS.md. When ALL tasks complete, create .ralph-done and exit. NEVER GIT PUSH. ONLY COMMIT.
+READ all of {plan} and {progress}. Pick ONE task with passes=false (prefer highest-risk/highest-impact). Keep changes small: one logical change per commit. Update {plan} by setting passes=true and adding notes or steps as needed. Append a brief entry to {progress} with what changed and why. Run feedback loops before committing: bun run typecheck, bun test, bun run lint (if missing, note it in {progress} and continue). Commit change (update {plan} in the same commit). ONLY do one task unless GLARINGLY OBVIOUS steps should run together. Quality bar: production code, maintainable, tests when appropriate. If you learn a critical operational detail, update AGENTS.md. When ALL tasks complete, create .ralph-done and output <promise>COMPLETE</promise>. NEVER GIT PUSH. ONLY COMMIT.
 ```
-
-### Connecting to an Existing Server
-
-Ralph can connect to an already-running OpenCode server instead of starting its own:
-
-```bash
-# Connect to local server on custom port
-ralph --server http://localhost:5000
-
-# Connect to remote server (requires shared filesystem)
-ralph -s http://192.168.1.100:4190
-
-# With custom timeout
-ralph --server http://localhost:4190 --server-timeout 10000
-```
-
-**Important:** Ralph reads `plan.md` and git state locally. When connecting to a remote server, ensure both machines have access to the same working directory (e.g., via NFS mount or the same repo checkout).
 
 ## Configuration
 
@@ -92,7 +90,8 @@ Ralph reads configuration from `~/.config/ralph/config.json`:
 ```json
 {
   "model": "opencode/claude-opus-4-5",
-  "plan": "plan.md",
+  "plan": "prd.json",
+  "progress": "progress.txt",
   "server": "http://localhost:4190",
   "serverTimeout": 5000
 }
@@ -100,17 +99,13 @@ Ralph reads configuration from `~/.config/ralph/config.json`:
 
 CLI arguments override config file values.
 
-## Keybindings
-
-| Key | Action |
-|-----|--------|
-| `p` | Pause/resume |
-| `q` / `Ctrl+C` | Quit |
-
-## Files
+## Workflow Files
 
 | File | Purpose |
 |------|---------|
+| `prd.json` | PRD plan items with `passes` state |
+| `progress.txt` | Progress log appended each iteration |
+| `.ralph-prompt.md` | Prompt template used for loop runs |
 | `.ralph-state.json` | Persisted state for resume after Ctrl+C |
 | `.ralph-lock` | Prevents multiple instances |
 | `.ralph-done` | Agent creates this when all tasks complete |
@@ -121,46 +116,43 @@ Add to `.gitignore`:
 .ralph-*
 ```
 
-## Architecture
+## Writing PRDs
 
-```
-src/
-├── index.ts      # CLI entry, wires TUI to loop
-├── loop.ts       # Main agent loop (prompt → events → commit)
-├── app.tsx       # Solid.js TUI root component
-├── state.ts      # State types and persistence
-├── plan.ts       # Plan file parser (checkbox counting)
-├── git.ts        # Git operations (hash, diff, commits)
-├── lock.ts       # Lock file management
-├── prompt.ts     # User confirmation prompts
-├── components/   # TUI components (header, log, footer)
-└── util/         # Helpers (time formatting, logging)
-```
+Prefer PRD JSON with `passes` flags so Ralph can track scope and progress:
 
-**Data flow:** `index.ts` starts the TUI (`app.tsx`) and the loop (`loop.ts`) in parallel. The loop sends callbacks to update TUI state. State persists to `.ralph-state.json` for resume capability.
-
-## Writing Plans
-
-The plan is everything. Invest time here.
-
-```markdown
-# Project Plan
-
-## Phase 1: Setup
-- [ ] Initialize project with bun init
-- [ ] Add TypeScript configuration
-- [ ] Create src/index.ts entry point
-
-## Phase 2: Core Features
-- [ ] Implement user authentication
-- [ ] Add database connection
+```json
+[
+  {
+    "category": "functional",
+    "description": "Create the CLI entry point",
+    "steps": [
+      "Run the CLI with --help",
+      "Verify the help output renders"
+    ],
+    "passes": false
+  }
+]
 ```
 
 **Guidelines:**
 - Small, isolated tasks—one commit each
-- Chronological order (dependencies first)
-- Use `- [ ]` checkboxes (Ralph parses these)
+- Explicit verification steps
+- Set `passes` to true only when verified
 - 1000+ lines is normal; more detail = fewer hallucinations
+
+Legacy markdown checkboxes are still supported, but `ralph init --from plan.md` is the recommended upgrade path.
+
+## Progress Log
+
+Append a short entry each iteration. Example:
+
+```
+## Iteration 3 - 2025-01-10T12:34:56Z
+- Task: Wire up API client
+- Checks: typecheck, test
+- Commit: abc123
+- Notes: Added retry logic for timeouts
+```
 
 ## AGENTS.md
 
@@ -176,7 +168,30 @@ Ralph writes operational learnings here. Future iterations read it.
 - Never import from `solid-js`, use `@opentui/solid`
 ```
 
-When Ralph makes a mistake, add a sign to prevent it recurring.
+## Keybindings
+
+| Key | Action |
+|-----|--------|
+| `p` | Pause/resume |
+| `q` / `Ctrl+C` | Quit |
+
+## Architecture
+
+```
+src/
+├── index.ts      # CLI entry, wires TUI to loop
+├── loop.ts       # Main agent loop (prompt → events → commit)
+├── app.tsx       # Solid.js TUI root component
+├── state.ts      # State types and persistence
+├── plan.ts       # PRD + markdown plan parser
+├── git.ts        # Git operations (hash, diff, commits)
+├── lock.ts       # Lock file management
+├── prompt.ts     # User confirmation prompts
+├── components/   # TUI components (header, log, footer)
+└── util/         # Helpers (time formatting, logging)
+```
+
+**Data flow:** `index.ts` starts the TUI (`app.tsx`) and the loop (`loop.ts`) in parallel. The loop sends callbacks to update TUI state. State persists to `.ralph-state.json` for resume capability.
 
 ## Testing
 
@@ -190,7 +205,7 @@ bun test --coverage   # with coverage
 tests/
 ├── unit/         # Module isolation tests
 ├── integration/  # Full workflow tests
-├── fixtures/     # Test plan files
+├── fixtures/     # Test plans and PRD JSON
 └── helpers/      # Mock factories, temp file utils
 ```
 
@@ -198,7 +213,3 @@ tests/
 
 - [Bun](https://bun.sh) v1.0+
 - [OpenCode](https://opencode.ai) CLI running
-
-## License
-
-MIT

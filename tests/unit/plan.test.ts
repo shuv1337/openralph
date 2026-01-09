@@ -59,6 +59,16 @@ describe("parsePlan", () => {
     const result = await parsePlan(path.join(fixturesDir, "complex-nested.md"));
     expect(result).toEqual({ done: 6, total: 13 });
   });
+
+  it("should parse PRD JSON plans with passes fields", async () => {
+    const result = await parsePlan(path.join(fixturesDir, "prd-valid.json"));
+    expect(result).toEqual({ done: 1, total: 2 });
+  });
+
+  it("should parse PRD JSON object plans with items array", async () => {
+    const result = await parsePlan(path.join(fixturesDir, "prd-object.json"));
+    expect(result).toEqual({ done: 1, total: 2 });
+  });
 });
 
 describe("parsePlanTasks", () => {
@@ -142,6 +152,24 @@ describe("parsePlanTasks", () => {
     // No task text should have leading/trailing whitespace
     result.forEach(task => {
       expect(task.text).toBe(task.text.trim());
+    });
+  });
+
+  it("should parse PRD JSON tasks into displayable items", async () => {
+    const result = await parsePlanTasks(path.join(fixturesDir, "prd-valid.json"));
+
+    expect(result.length).toBe(2);
+    expect(result[0]).toEqual({
+      id: "prd-1",
+      line: 1,
+      text: "[functional] Create the initial project scaffolding",
+      done: true,
+    });
+    expect(result[1]).toEqual({
+      id: "prd-2",
+      line: 2,
+      text: "[integration] Wire up the API client",
+      done: false,
     });
   });
 });

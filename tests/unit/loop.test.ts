@@ -5,8 +5,9 @@ import type { LoopOptions } from "../../src/state.js";
 describe("buildPrompt", () => {
   const createOptions = (overrides: Partial<LoopOptions> = {}): LoopOptions => ({
     planFile: "plan.md",
+    progressFile: "progress.txt",
     model: "anthropic/claude-opus-4",
-    prompt: "Default prompt with {plan}",
+    prompt: "Default prompt with {plan} and {progress}",
     ...overrides,
   });
 
@@ -42,6 +43,24 @@ describe("buildPrompt", () => {
       });
       const result = await buildPrompt(options);
       expect(result).toBe("Process plan.md and complete tasks.");
+    });
+
+    it("should replace {progress} with options.progressFile", async () => {
+      const options = createOptions({
+        progressFile: "notes/progress.txt",
+        prompt: "Append updates to {progress}.",
+      });
+      const result = await buildPrompt(options);
+      expect(result).toBe("Append updates to notes/progress.txt.");
+    });
+
+    it("should replace {{PROGRESS_FILE}} placeholder", async () => {
+      const options = createOptions({
+        progressFile: "progress.log",
+        prompt: "Use {{PROGRESS_FILE}} for logs.",
+      });
+      const result = await buildPrompt(options);
+      expect(result).toBe("Use progress.log for logs.");
     });
 
     it("should replace both {plan} and {{PLAN_FILE}} placeholders", async () => {
@@ -87,6 +106,7 @@ describe("buildPrompt", () => {
       const result = await buildPrompt(options);
       // Verify it uses the default prompt with {plan} substituted
       expect(result).toContain("READ all of plan.md");
+      expect(result).toContain("progress.txt");
       expect(result).toContain("Pick ONE task");
       expect(result).toContain("update AGENTS.md");
       expect(result).toContain(".ralph-done");
@@ -104,6 +124,7 @@ describe("buildPrompt", () => {
       // The default prompt has two {plan} occurrences - both should be replaced
       expect(result).toContain("READ all of docs/custom-plan.md");
       expect(result).toContain("Update docs/custom-plan.md");
+      expect(result).toContain("progress.txt");
       expect(result).not.toContain("{plan}");
     });
 

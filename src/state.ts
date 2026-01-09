@@ -92,6 +92,7 @@ export async function saveState(state: PersistedState): Promise<void> {
 
 export type LoopOptions = {
   planFile: string;
+  progressFile?: string;
   model: string;
   prompt: string;
   promptFile?: string;

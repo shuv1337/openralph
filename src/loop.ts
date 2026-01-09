@@ -5,7 +5,7 @@ import { getHeadHash, getCommitsSince, getDiffStats } from "./git.js";
 import { parsePlan } from "./plan.js";
 import { log } from "./util/log.js";
 
-const DEFAULT_PROMPT = `READ all of {plan}. Pick ONE task. If needed, verify via web/code search (this applies to packages, knowledge, deterministic data - NEVER VERIFY EDIT TOOLS WORKED OR THAT YOU COMMITED SOMETHING. BE PRAGMATIC ABOUT EVERYTHING). Complete task. Commit change (update the plan.md in the same commit). ONLY do one task unless GLARINGLY OBVIOUS steps should run together. Update {plan}. If you learn a critical operational detail, update AGENTS.md. When ALL tasks complete, create .ralph-done and exit. NEVER GIT PUSH. ONLY COMMIT.`;
+const DEFAULT_PROMPT = `READ all of {plan} and {progress}. Pick ONE task with passes=false (prefer highest-risk/highest-impact). Keep changes small: one logical change per commit. Update {plan} by setting passes=true and adding notes or steps as needed. Append a brief entry to {progress} with what changed and why. Run feedback loops before committing: bun run typecheck, bun test, bun run lint (if missing, note it in {progress} and continue). Commit change (update {plan} in the same commit). ONLY do one task unless GLARINGLY OBVIOUS steps should run together. Quality bar: production code, maintainable, tests when appropriate. If you learn a critical operational detail, update AGENTS.md. When ALL tasks complete, create .ralph-done and output <promise>COMPLETE</promise>. NEVER GIT PUSH. ONLY COMMIT.`;
 
 const steeringContext: string[] = [];
 
@@ -322,7 +322,7 @@ export function cleanupDebugSession(): void {
 
 /**
  * Build the prompt string with precedence: --prompt > --prompt-file > DEFAULT_PROMPT.
- * Replaces {plan} and {{PLAN_FILE}} placeholders with the actual plan file path.
+ * Replaces {plan}, {{PLAN_FILE}}, {progress}, and {{PROGRESS_FILE}} placeholders.
  */
 export async function buildPrompt(options: LoopOptions): Promise<string> {
   let template: string;
@@ -347,10 +347,14 @@ export async function buildPrompt(options: LoopOptions): Promise<string> {
     template = DEFAULT_PROMPT;
   }
 
+  const progressFile = options.progressFile || "progress.txt";
+
   // Replace both {plan} and {{PLAN_FILE}} placeholders
   return template
     .replace(/\{plan\}/g, options.planFile)
-    .replace(/\{\{PLAN_FILE\}\}/g, options.planFile);
+    .replace(/\{\{PLAN_FILE\}\}/g, options.planFile)
+    .replace(/\{progress\}/g, progressFile)
+    .replace(/\{\{PROGRESS_FILE\}\}/g, progressFile);
 }
 
 /**
@@ -586,7 +590,7 @@ export async function runLoop(
 
         // Subscribe to events - the SSE connection is established when we start iterating
         log("loop", "Subscribing to events...");
-        const events = await client.event.subscribe();
+        const events = await client.event.subscribe({ signal });
 
         let promptSent = false;
 

@@ -9,7 +9,9 @@ import { getHeadHash, getDiffStats, getCommitsSince } from "./git";
 import { startApp } from "./app";
 import { runLoop } from "./loop";
 import { runHeadlessMode } from "./headless";
+import { runInit } from "./init";
 import { initLog, log } from "./util/log";
+import { validatePlanFile } from "./plan";
 import { readFileSync, existsSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
@@ -44,6 +46,25 @@ function isVersionAtLeast(current: string, required: string): boolean {
   return cPatch >= rPatch;
 }
 
+async function warnIfPlanOrProgressMissing(planFile: string, progressFile: string): Promise<void> {
+  const validation = await validatePlanFile(planFile);
+  if (!validation.valid) {
+    const message = `Plan file "${planFile}" is missing or invalid. Run "ralph init" to create a PRD plan.`;
+    console.warn(message);
+    log("main", "Plan validation warning", { planFile, reason: validation.issues });
+  } else if (validation.format === "markdown") {
+    const message = `Plan file "${planFile}" uses legacy markdown checkboxes. Run "ralph init --from ${planFile}" to convert to PRD JSON.`;
+    console.warn(message);
+    log("main", "Plan format warning", { planFile, format: validation.format });
+  }
+
+  if (!existsSync(progressFile)) {
+    const message = `Progress file "${progressFile}" not found. Run "ralph init" to create it.`;
+    console.warn(message);
+    log("main", "Progress file missing", { progressFile });
+  }
+}
+
 // Version is injected at build time via Bun's define
 declare const RALPH_VERSION: string | undefined;
 
@@ -57,6 +78,7 @@ interface RalphConfig {
   adapter?: string;
   model?: string;
   plan?: string;
+  progress?: string;
   prompt?: string;
   promptFile?: string;
   server?: string;
@@ -184,6 +206,21 @@ async function main() {
   const argv = await yargs(hideBin(process.argv))
     .scriptName("ralph")
     .usage("$0 [options]")
+    .command(
+      "init",
+      "Initialize PRD plan, progress log, and prompt template",
+      (cmd) =>
+        cmd
+          .option("from", {
+            type: "string",
+            description: "Source plan or notes to convert into PRD JSON",
+          })
+          .option("force", {
+            type: "boolean",
+            description: "Overwrite existing files",
+            default: false,
+          })
+    )
     .option("headless", {
       alias: "H",
       type: "boolean",
@@ -194,7 +231,12 @@ async function main() {
       alias: "p",
       type: "string",
       description: "Path to the plan file",
-      default: globalConfig.plan || "plan.md",
+      default: globalConfig.plan || "prd.json",
+    })
+    .option("progress", {
+      type: "string",
+      description: "Path to the progress log file",
+      default: globalConfig.progress || "progress.txt",
     })
     .option("adapter", {
       type: "string",
@@ -209,7 +251,7 @@ async function main() {
     })
     .option("prompt", {
       type: "string",
-      description: "Custom prompt template (use {plan} as placeholder)",
+      description: "Custom prompt template (use {plan} and {progress} placeholders)",
       default: globalConfig.prompt,
     })
     .option("prompt-file", {
@@ -278,10 +320,31 @@ async function main() {
       default: globalConfig.debug ?? false,
     })
     .help("h")
+    .alias("h", "help")
     .version(version)
     .alias("v", "version")
     .strict()
     .parse();
+
+  if (argv._[0] === "init") {
+    const result = await runInit({
+      planFile: argv.plan,
+      progressFile: argv.progress,
+      promptFile: argv.promptFile,
+      from: argv.from,
+      force: argv.force,
+    });
+    if (result.created.length > 0) {
+      console.log(`Created: ${result.created.join(", ")}`);
+    }
+    if (result.skipped.length > 0) {
+      console.log(`Skipped: ${result.skipped.join(", ")}`);
+    }
+    for (const warning of result.warnings) {
+      console.warn(`Warning: ${warning}`);
+    }
+    return;
+  }
 
   // Acquire lock to prevent multiple instances
   const lockAcquired = await acquireLock();
@@ -354,6 +417,9 @@ async function main() {
     const isNewRun = !stateToUse;
     initLog(isNewRun);
     log("main", "Ralph starting", { plan: argv.plan, model: argv.model, reset: shouldReset });
+    if (!argv.debug) {
+      await warnIfPlanOrProgressMissing(argv.plan, argv.progress);
+    }
     
     // Create fresh state if needed
     if (!stateToUse) {
@@ -373,6 +439,7 @@ async function main() {
     // Create LoopOptions from CLI arguments
     const loopOptions: LoopOptions = {
       planFile: argv.plan,
+      progressFile: argv.progress,
       model: argv.model,
       prompt: argv.prompt || "",
       promptFile: argv.promptFile,

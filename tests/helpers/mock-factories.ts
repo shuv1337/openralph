@@ -27,7 +27,7 @@ export function createMockPersistedState(
     startTime: 1704067200000, // 2024-01-01T00:00:00.000Z
     initialCommitHash: "abc123def456789012345678901234567890abcd",
     iterationTimes: [],
-    planFile: "plan.md",
+    planFile: "prd.json",
     ...overrides,
   };
 }
@@ -52,9 +52,10 @@ export function createMockLoopOptions(
   overrides?: Partial<LoopOptions>
 ): LoopOptions {
   return {
-    planFile: "plan.md",
+    planFile: "prd.json",
+    progressFile: "progress.txt",
     model: "anthropic/claude-sonnet-4",
-    prompt: "READ all of {plan}. Pick ONE task. Complete it. Commit change.",
+    prompt: "READ all of {plan} and {progress}. Pick ONE task.",
     serverUrl: undefined,
     serverTimeoutMs: undefined,
     ...overrides,
