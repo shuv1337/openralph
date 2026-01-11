@@ -251,7 +251,7 @@ function ReasoningEventItem(props: { event: ToolEvent; theme: Theme }) {
 
 /**
  * Scrollable event log component displaying tool events and iteration separators.
- * Uses stickyScroll to keep the view at the bottom as new events arrive.
+ * Uses stickyScroll to keep view at the bottom as new events arrive.
  * 
  * PERF: Uses <For> directly on props.events to avoid allocating wrapper objects.
  * Spinner is managed as an event in the array, always kept at the end to ensure
