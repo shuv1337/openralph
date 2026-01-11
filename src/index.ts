@@ -814,11 +814,12 @@ async function main() {
       },
       onTasksUpdated: (done, total) => {
         log("main", "onTasksUpdated", { done, total });
-        stateSetters.setState((prev) => ({
+        batchedUpdater.queueUpdate((prev) => ({
           ...prev,
           tasksComplete: done,
           totalTasks: total,
         }));
+        batchedUpdater.flushNow();
       },
       onCommitsUpdated: (commits) => {
         // Debounce commits updates - these can lag slightly for better batching
@@ -835,39 +836,44 @@ async function main() {
       },
       onPause: () => {
         // Update state.status to "paused"
-        stateSetters.setState((prev) => ({
+        batchedUpdater.queueUpdate((prev) => ({
           ...prev,
           status: "paused",
         }));
+        batchedUpdater.flushNow();
       },
       onResume: () => {
         // Update state.status to "running"
-        stateSetters.setState((prev) => ({
+        batchedUpdater.queueUpdate((prev) => ({
           ...prev,
           status: "running",
         }));
+        batchedUpdater.flushNow();
       },
       onComplete: () => {
         // Update state.status to "complete"
-        stateSetters.setState((prev) => ({
+        batchedUpdater.queueUpdate((prev) => ({
           ...prev,
           status: "complete",
         }));
+        batchedUpdater.flushNow();
       },
       onError: (error) => {
         // Update state.status to "error" and set state.error
-        stateSetters.setState((prev) => ({
+        batchedUpdater.queueUpdate((prev) => ({
           ...prev,
           status: "error",
           error,
         }));
+        batchedUpdater.flushNow();
       },
       onIdleChanged: (isIdle) => {
         // Update isIdle state for idle mode optimization
-        stateSetters.setState((prev) => ({
+        batchedUpdater.queueUpdate((prev) => ({
           ...prev,
           isIdle,
         }));
+        // Idle changes are frequent/rapid during typing, let them batch naturally
       },
       onSessionCreated: (session) => {
         // Store session info in state for steering mode
