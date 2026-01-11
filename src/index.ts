@@ -736,6 +736,7 @@ async function main() {
       },
       onEvent: (event) => {
         // Debounce event updates to batch rapid events within 50ms window
+        // Force immediate flush to help scrollbox stay in sync on Windows
         batchedUpdater.queueUpdate((prev) => {
           // Clone events array to ensure immutability and trigger proper reactivity
           const nextEvents = [...prev.events];
@@ -766,6 +767,8 @@ async function main() {
           
           return { events: nextEvents };
         });
+        // Force immediate flush for ALL events to help scrollbox on Windows
+        batchedUpdater.flushNow();
       },
       onRawOutput: (data) => {
         batchedUpdater.queueUpdate((prev) => {
