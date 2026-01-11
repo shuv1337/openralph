@@ -268,8 +268,10 @@ export function Log(props: LogProps) {
   return (
     <scrollbox
       flexGrow={1}
-      stickyScroll={true}
-      stickyStart="bottom"
+      // TEST FIX: Disabled stickyScroll on Windows to see if default behavior works better
+      // If this fixes the issue, we should investigate further or file OpenTUI bug
+      // stickyScroll={true}
+      // stickyStart="bottom"
       rootOptions={{
         backgroundColor: t().background,
       }}
