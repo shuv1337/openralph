@@ -9,11 +9,11 @@ import {
 } from "../../src/lib/theme-resolver";
 
 describe("resolveTheme", () => {
-  it("should resolve the default theme (opencode) when no name provided", () => {
+  it("should resolve the default theme (nightowl) when no name provided", () => {
     const theme = resolveTheme();
+    const nightowlTheme = resolveTheme("nightowl");
     
-    // Verify it returns a Theme object with expected properties
-    expect(theme.primary).toBeDefined();
+    expect(theme.primary).toBe(nightowlTheme.primary);
     expect(theme.background).toBeDefined();
     expect(theme.text).toBeDefined();
   });
@@ -28,9 +28,8 @@ describe("resolveTheme", () => {
 
   it("should fall back to default theme for invalid theme name", () => {
     const theme = resolveTheme("nonexistent-theme");
-    const defaultTheme = resolveTheme("opencode");
+    const defaultTheme = resolveTheme();
     
-    // Should resolve to the same as the default theme
     expect(theme.primary).toBe(defaultTheme.primary);
   });
 

@@ -82,4 +82,4 @@ export const themes: Record<string, ThemeJson> = {
 
 export const themeNames = Object.keys(themes);
 
-export const defaultTheme = "opencode";
+export const defaultTheme = "nightowl";
