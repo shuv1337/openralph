@@ -209,6 +209,16 @@ export function App(props: AppProps) {
     terminalBuffer: "",
   });
 
+  const requestRender = () => {
+    renderer.requestRender?.();
+  };
+
+  const setStateAndRender: Setter<LoopState> = (update) => {
+    const result = setState(update);
+    requestRender();
+    return result;
+  };
+
   // Steering mode state signals
   const [commandMode, setCommandMode] = createSignal(false);
   const [commandInput, setCommandInput] = createSignal("");
@@ -234,7 +244,7 @@ export function App(props: AppProps) {
       }
     }
 
-    setState((prev) => {
+    setStateAndRender((prev) => {
       if (prev.tasksComplete === done && prev.totalTasks === total) {
         return prev;
       }
@@ -268,11 +278,7 @@ export function App(props: AppProps) {
 
   // Export wrapped state setter for external access. Calls requestRender()
   // after updates to ensure TUI refreshes on all platforms.
-  globalSetState = (update) => {
-    const result = setState(update);
-    renderer.requestRender?.();
-    return result;
-  };
+  globalSetState = (update) => setStateAndRender(update);
   // Update iteration times in loopStats (used for ETA calculation)
   globalUpdateIterationTimes = (times: number[]) => {
     // Re-initialize loopStats with the updated iteration times
@@ -320,7 +326,7 @@ export function App(props: AppProps) {
       loopStore.dispatch({ type: "RESUME" });
       loopStats.resume();
       // Also update legacy state for external compatibility
-      setState((prev) => ({ ...prev, status: "running" }));
+      setStateAndRender((prev) => ({ ...prev, status: "running" }));
     } else {
       // Pause: create pause file and update status via dispatch
       await Bun.write(PAUSE_FILE, String(process.pid));
@@ -328,7 +334,7 @@ export function App(props: AppProps) {
       loopStore.dispatch({ type: "PAUSE" });
       loopStats.pause();
       // Also update legacy state for external compatibility
-      setState((prev) => ({ ...prev, status: "paused" }));
+      setStateAndRender((prev) => ({ ...prev, status: "paused" }));
     }
   };
 
@@ -349,10 +355,10 @@ export function App(props: AppProps) {
       <ToastProvider>
         <DialogProvider>
           <CommandProvider onShowPalette={showCommandPalette}>
-            <AppContent
-              state={state}
-              setState={setState}
-              options={props.options}
+              <AppContent
+                state={state}
+                setState={setStateAndRender}
+                options={props.options}
               commandMode={commandMode}
               setCommandMode={setCommandMode}
               setCommandInput={setCommandInput}
@@ -435,6 +441,12 @@ function AppContent(props: AppContentProps) {
     const list = uiTasks();
     if (list.length === 0) return null;
     return list[Math.min(selectedTaskIndex(), list.length - 1)];
+  });
+
+  const currentTask = createMemo(() => {
+    const list = uiTasks();
+    if (list.length === 0) return null;
+    return list.find((task) => task.status !== "done") ?? list[0];
   });
 
   createEffect(() => {
@@ -1167,28 +1179,28 @@ function AppContent(props: AppContentProps) {
       height="100%"
       backgroundColor={t().background}
     >
-      <Header
-        status={props.state().status}
-        iteration={props.state().iteration}
-        tasksComplete={props.state().tasksComplete}
-        totalTasks={props.state().totalTasks}
-        elapsedMs={props.loopStats.elapsedMs()}
-        eta={props.loopStats.etaMs()}
-        debug={props.options.debug}
-        selectedTask={selectedTask()}
-        agentName={props.options.agent}
-        adapterName={props.options.adapter ?? props.state().adapterMode}
-      />
-      {showDashboard() && (
-        <ProgressDashboard
+        <Header
           status={props.state().status}
+          iteration={props.state().iteration}
+          tasksComplete={props.state().tasksComplete}
+          totalTasks={props.state().totalTasks}
+          elapsedMs={props.loopStats.elapsedMs()}
+          eta={props.loopStats.etaMs()}
+          debug={props.options.debug}
+          selectedTask={currentTask()}
           agentName={props.options.agent}
           adapterName={props.options.adapter ?? props.state().adapterMode}
-          planName={props.options.planFile}
-          currentTaskId={selectedTask()?.id}
-          currentTaskTitle={selectedTask()?.title}
         />
-      )}
+        {showDashboard() && (
+          <ProgressDashboard
+            status={props.state().status}
+            agentName={props.options.agent}
+            adapterName={props.options.adapter ?? props.state().adapterMode}
+            planName={props.options.planFile}
+            currentTaskId={currentTask()?.id}
+            currentTaskTitle={currentTask()?.title}
+          />
+        )}
       <box
         flexGrow={1}
         flexDirection={isCompact() ? "column" : "row"}
@@ -1199,6 +1211,7 @@ function AppContent(props: AppContentProps) {
             tasks={uiTasks()}
             selectedIndex={selectedTaskIndex()}
             width={leftPanelWidth()}
+            height={contentHeight()}
           />
         )}
         <RightPanel
