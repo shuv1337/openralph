@@ -3,7 +3,7 @@ import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import { extend } from "@opentui/solid";
 import { acquireLock, releaseLock } from "./lock";
-import { loadState, saveState, PersistedState, LoopOptions, trimEventsInPlace, LoopState } from "./state";
+import { loadState, saveState, PersistedState, LoopOptions, trimEvents, LoopState } from "./state";
 import { confirm } from "./prompt";
 import { getHeadHash, getDiffStats, getCommitsSince } from "./git";
 import { startApp, destroyRenderer } from "./app";
@@ -866,25 +866,22 @@ async function main() {
         // Debounce event updates to batch rapid events within 50ms window
         // Mutate existing array in-place to avoid allocations
         batchedUpdater.queueUpdate((prev) => {
-          // For tool events, ensure spinner stays at the end of the array
-          if (event.type === "tool") {
-            // Find and remove spinner temporarily
-            const spinnerIndex = prev.events.findIndex((e) => e.type === "spinner");
-            let spinner: typeof event | undefined;
-            if (spinnerIndex !== -1) {
-              spinner = prev.events.splice(spinnerIndex, 1)[0];
-            }
-            // Add the tool event
-            prev.events.push(event);
-            // Re-add spinner at the end
-            if (spinner) {
-              prev.events.push(spinner);
-            }
+          const spinnerIndex = prev.events.findIndex((e) => e.type === "spinner");
+          const existingSpinner = spinnerIndex !== -1 ? prev.events[spinnerIndex] : undefined;
+          const eventsWithoutSpinner = prev.events.filter((e) => e.type !== "spinner");
+
+          let nextSpinner = existingSpinner;
+          if (event.type === "spinner") {
+            nextSpinner = event;
           } else {
-            prev.events.push(event);
+            eventsWithoutSpinner.push(event);
           }
-          trimEventsInPlace(prev.events);
-          return { events: prev.events };
+
+          if (nextSpinner) {
+            eventsWithoutSpinner.push(nextSpinner);
+          }
+
+          return { events: trimEvents(eventsWithoutSpinner) };
         });
       },
       onRawOutput: (data) => {
@@ -901,22 +898,21 @@ async function main() {
         batchedUpdater.flushNow();
         // Mutate the separator event in-place and remove spinner
         stateSetters.setState((prev) => {
-          for (const event of prev.events) {
-            if (event.type === "separator" && event.iteration === iteration) {
-              event.duration = duration;
-              event.commitCount = commits;
-              break;
-            }
-          }
-          // Remove spinner event for this iteration
-          const spinnerIndex = prev.events.findIndex(
-            (e) => e.type === "spinner" && e.iteration === iteration
-          );
-          if (spinnerIndex !== -1) {
-            prev.events.splice(spinnerIndex, 1);
-          }
-          // Return same events array reference - mutation is sufficient to trigger re-render
-          return { ...prev };
+          const updatedEvents = prev.events
+            .map((event) => {
+              if (event.type === "separator" && event.iteration === iteration) {
+                return { ...event, duration, commitCount: commits };
+              }
+              return event;
+            })
+            .filter(
+              (event) => !(event.type === "spinner" && event.iteration === iteration)
+            );
+
+          return {
+            ...prev,
+            events: updatedEvents,
+          };
         });
         // Update persisted state with the new iteration time
         stateToUse.iterationTimes.push(duration);
