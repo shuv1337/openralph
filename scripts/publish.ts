@@ -142,8 +142,6 @@ await $`mkdir -p ./dist/${mainPkgDirName}/bin`;
 // Copy JS launcher
 await $`cp ./bin/ralph ./dist/${mainPkgDirName}/bin/ralph`;
 
-// Copy postinstall script
-await $`cp ./scripts/postinstall.mjs ./dist/${mainPkgDirName}/postinstall.mjs`;
 
 // Copy README and LICENSE
 await $`cp ./README.md ./dist/${mainPkgDirName}/README.md`;
@@ -156,9 +154,6 @@ const mainPackageJson = {
   description: "Ralph Driven Development using OpenCode SDK and OpenTUI",
   bin: {
     ralph: "./bin/ralph",
-  },
-  scripts: {
-    postinstall: "node ./postinstall.mjs",
   },
   optionalDependencies: binaries,
   repository: {
