@@ -1,4 +1,4 @@
-# ralph
+# openralph
 
 AI agent loop for autonomous task execution. Reads a PRD, picks one task, completes it, commits, repeats.
 
