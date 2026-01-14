@@ -219,9 +219,31 @@ export function App(props: AppProps) {
 
   // Function to refresh tasks from plan file
   const refreshTasks = async () => {
-    if (props.options.planFile) {
-      const parsed = await parsePlanTasks(props.options.planFile);
-      setTasks(parsed);
+    if (!props.options.planFile) {
+      return;
+    }
+
+    const parsed = await parsePlanTasks(props.options.planFile);
+    setTasks(parsed);
+
+    const total = parsed.length;
+    let done = 0;
+    for (const task of parsed) {
+      if (task.done) {
+        done++;
+      }
+    }
+
+    setState((prev) => {
+      if (prev.tasksComplete === done && prev.totalTasks === total) {
+        return prev;
+      }
+      return { ...prev, tasksComplete: done, totalTasks: total };
+    });
+
+    const loopState = loopStore.state();
+    if (loopState.tasksComplete !== done || loopState.totalTasks !== total) {
+      loopStore.dispatch({ type: "SET_TASKS", complete: done, total });
     }
   };
 

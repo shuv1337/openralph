@@ -98,7 +98,7 @@ import type { LoopCallbacks } from "../../src/loop.js";
 import type { PersistedState, LoopOptions } from "../../src/state.js";
 
 describe("ralph flow integration", () => {
-  const testPlanFile = "tests/fixtures/plans/partial-complete.md";
+  const testPlanFile = "tests/fixtures/plans/all-complete.md";
   let cleanupFiles: string[] = [];
 
   // Track callback invocations
@@ -145,6 +145,35 @@ describe("ralph flow integration", () => {
       callbackOrder.push(`onIdleChanged:${isIdle}`);
     },
   });
+
+  async function runLoopUntilTasksUpdated(
+    options: LoopOptions,
+    persistedState: PersistedState,
+    callbacks: LoopCallbacks,
+    controller: AbortController,
+  ): Promise<void> {
+    let resolved = false;
+    let resolveTasks: (() => void) | null = null;
+    const tasksUpdated = new Promise<void>((resolve) => {
+      resolveTasks = resolve;
+    });
+
+    const wrappedCallbacks: LoopCallbacks = {
+      ...callbacks,
+      onTasksUpdated: (done, total) => {
+        callbacks.onTasksUpdated(done, total);
+        if (!resolved) {
+          resolved = true;
+          resolveTasks?.();
+        }
+      },
+    };
+
+    const loopPromise = runLoop(options, persistedState, wrappedCallbacks, controller.signal);
+    await tasksUpdated;
+    controller.abort();
+    await loopPromise;
+  }
 
   beforeEach(() => {
     callbackOrder = [];
@@ -327,7 +356,7 @@ describe("ralph flow integration", () => {
 
     await runLoop(options, persistedState, callbacks, controller.signal);
 
-    // Verify tasks were parsed (partial-complete.md has mix of done/not done)
+    // Verify tasks were parsed (all-complete.md has completed tasks)
     expect(capturedTasks).not.toBeNull();
     expect(capturedTasks!.total).toBeGreaterThan(0);
   });
@@ -1141,14 +1170,7 @@ describe("ralph flow integration", () => {
       };
 
       const controller = new AbortController();
-
-      // Create .ralph-done after loop starts to allow task parsing
-      cleanupFiles.push(".ralph-done");
-      setTimeout(async () => {
-        await Bun.write(".ralph-done", "");
-      }, 50);
-
-      await runLoop(options, persistedState, callbacks, controller.signal);
+      await runLoopUntilTasksUpdated(options, persistedState, callbacks, controller);
 
       // uppercase-complete.md has 3 uppercase [X] completed and 1 incomplete
       expect(capturedTasks).not.toBeNull();
@@ -1181,14 +1203,7 @@ describe("ralph flow integration", () => {
       };
 
       const controller = new AbortController();
-
-      // Create .ralph-done after loop starts to allow task parsing
-      cleanupFiles.push(".ralph-done");
-      setTimeout(async () => {
-        await Bun.write(".ralph-done", "");
-      }, 50);
-
-      await runLoop(options, persistedState, callbacks, controller.signal);
+      await runLoopUntilTasksUpdated(options, persistedState, callbacks, controller);
 
       // code-blocks.md has 2 completed and 3 incomplete real tasks
       // The checkboxes in code blocks should NOT be counted
@@ -1222,14 +1237,7 @@ describe("ralph flow integration", () => {
       };
 
       const controller = new AbortController();
-
-      // Create .ralph-done after loop starts to allow task parsing
-      cleanupFiles.push(".ralph-done");
-      setTimeout(async () => {
-        await Bun.write(".ralph-done", "");
-      }, 50);
-
-      await runLoop(options, persistedState, callbacks, controller.signal);
+      await runLoopUntilTasksUpdated(options, persistedState, callbacks, controller);
 
       // complex-nested.md has checkboxes at various nesting levels:
       // Completed (x/X): 6 total
@@ -1265,14 +1273,7 @@ describe("ralph flow integration", () => {
       };
 
       const controller = new AbortController();
-
-      // Create .ralph-done after loop starts to allow task parsing
-      cleanupFiles.push(".ralph-done");
-      setTimeout(async () => {
-        await Bun.write(".ralph-done", "");
-      }, 50);
-
-      await runLoop(options, persistedState, callbacks, controller.signal);
+      await runLoopUntilTasksUpdated(options, persistedState, callbacks, controller);
 
       // all-complete.md has 5 completed tasks
       expect(capturedTasks).not.toBeNull();
@@ -1305,14 +1306,7 @@ describe("ralph flow integration", () => {
       };
 
       const controller = new AbortController();
-
-      // Create .ralph-done after loop starts to allow task parsing
-      cleanupFiles.push(".ralph-done");
-      setTimeout(async () => {
-        await Bun.write(".ralph-done", "");
-      }, 50);
-
-      await runLoop(options, persistedState, callbacks, controller.signal);
+      await runLoopUntilTasksUpdated(options, persistedState, callbacks, controller);
 
       // all-incomplete.md has 3 incomplete tasks
       expect(capturedTasks).not.toBeNull();
@@ -1345,14 +1339,7 @@ describe("ralph flow integration", () => {
       };
 
       const controller = new AbortController();
-
-      // Create .ralph-done after loop starts to allow task parsing
-      cleanupFiles.push(".ralph-done");
-      setTimeout(async () => {
-        await Bun.write(".ralph-done", "");
-      }, 50);
-
-      await runLoop(options, persistedState, callbacks, controller.signal);
+      await runLoopUntilTasksUpdated(options, persistedState, callbacks, controller);
 
       // empty.md should have no tasks
       expect(capturedTasks).not.toBeNull();
@@ -1385,14 +1372,7 @@ describe("ralph flow integration", () => {
       };
 
       const controller = new AbortController();
-
-      // Create .ralph-done after loop starts to allow task parsing
-      cleanupFiles.push(".ralph-done");
-      setTimeout(async () => {
-        await Bun.write(".ralph-done", "");
-      }, 50);
-
-      await runLoop(options, persistedState, callbacks, controller.signal);
+      await runLoopUntilTasksUpdated(options, persistedState, callbacks, controller);
 
       // partial-complete.md has 3 completed and 7 incomplete tasks
       expect(capturedTasks).not.toBeNull();
