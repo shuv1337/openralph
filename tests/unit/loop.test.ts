@@ -1,5 +1,5 @@
 import { describe, it, expect, mock } from "bun:test";
-import { buildPrompt, parseModel, validateAndNormalizeServerUrl, checkServerHealth, connectToExternalServer, calculateBackoffMs } from "../../src/loop.js";
+import { buildPrompt, parseModel, validateAndNormalizeServerUrl, checkServerHealth, connectToExternalServer, calculateBackoffMs, stripFrontmatter } from "../../src/loop.js";
 import type { LoopOptions } from "../../src/state.js";
 
 describe("buildPrompt", () => {
@@ -453,5 +453,82 @@ describe("calculateBackoffMs", () => {
       // (statistically unlikely to get same value 10 times)
       expect(results.size).toBeGreaterThan(1);
     });
+  });
+});
+
+describe("stripFrontmatter", () => {
+  it("should strip YAML frontmatter from content", () => {
+    const content = `---
+generated: true
+generator: ralph-init
+---
+READ all of plan.md`;
+    expect(stripFrontmatter(content)).toBe("READ all of plan.md");
+  });
+
+  it("should return content unchanged if no frontmatter", () => {
+    const content = "READ all of plan.md";
+    expect(stripFrontmatter(content)).toBe("READ all of plan.md");
+  });
+
+  it("should return content unchanged if frontmatter not closed", () => {
+    const content = `---
+generated: true
+READ all of plan.md`;
+    expect(stripFrontmatter(content)).toBe(content);
+  });
+
+  it("should handle frontmatter with multiple fields", () => {
+    const content = `---
+field1: value1
+field2: value2
+field3: value3
+---
+Actual content here`;
+    expect(stripFrontmatter(content)).toBe("Actual content here");
+  });
+
+  it("should preserve content that starts with dashes but not frontmatter", () => {
+    const content = "-- This is a SQL comment\nSELECT * FROM table";
+    expect(stripFrontmatter(content)).toBe(content);
+  });
+
+  it("should handle empty content after frontmatter", () => {
+    const content = `---
+generated: true
+---
+`;
+    expect(stripFrontmatter(content)).toBe("");
+  });
+});
+
+describe("buildPrompt frontmatter handling", () => {
+  it("should strip frontmatter from prompt file content", async () => {
+    // Create a temp file with frontmatter
+    const tempFile = `/tmp/test-prompt-frontmatter-${Date.now()}.md`;
+    const promptContent = `---
+generated: true
+generator: ralph-init
+safe_to_delete: true
+---
+Custom prompt: process {plan}`;
+    await Bun.write(tempFile, promptContent);
+
+    try {
+      const options = {
+        planFile: "plan.md",
+        progressFile: "progress.txt",
+        model: "anthropic/claude-opus-4",
+        prompt: undefined,
+        promptFile: tempFile,
+      };
+      const result = await buildPrompt(options as any);
+      // Frontmatter should be stripped, only content remains
+      expect(result).toBe("Custom prompt: process plan.md");
+      expect(result).not.toContain("generated:");
+      expect(result).not.toContain("---");
+    } finally {
+      await Bun.file(tempFile).delete?.();
+    }
   });
 });

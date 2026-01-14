@@ -353,8 +353,28 @@ export function cleanupDebugSession(): void {
 }
 
 /**
+ * Strip YAML frontmatter from content if present.
+ * Frontmatter is defined as content between --- delimiters at the start of the file.
+ */
+export function stripFrontmatter(content: string): string {
+  if (!content.startsWith("---\n")) {
+    return content;
+  }
+  
+  // Find the closing ---
+  const endIndex = content.indexOf("\n---\n", 4);
+  if (endIndex === -1) {
+    return content;
+  }
+  
+  // Return content after the closing ---\n
+  return content.slice(endIndex + 5);
+}
+
+/**
  * Build the prompt string with precedence: --prompt > --prompt-file > DEFAULT_PROMPT.
  * Replaces {plan}, {{PLAN_FILE}}, {progress}, and {{PROGRESS_FILE}} placeholders.
+ * Strips YAML frontmatter from prompt files (used to mark generated files).
  */
 export async function buildPrompt(options: LoopOptions): Promise<string> {
   let template: string;
@@ -368,6 +388,8 @@ export async function buildPrompt(options: LoopOptions): Promise<string> {
     const file = Bun.file(options.promptFile);
     if (await file.exists()) {
       template = await file.text();
+      // Strip frontmatter (used to mark generated files)
+      template = stripFrontmatter(template);
       log("loop", "Loaded prompt from file", { path: options.promptFile });
     } else {
       // File doesn't exist, fall through to default
