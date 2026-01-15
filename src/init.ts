@@ -1,11 +1,58 @@
 import { existsSync, mkdirSync } from "fs";
 import { dirname, extname, join } from "path";
 import { parsePrdItems, type PrdItem } from "./plan";
+import { PLUGIN_TEMPLATE } from "./templates/plugin-template";
+import { AGENTS_TEMPLATE } from "./templates/agents-template";
+
+// Re-export for backwards compatibility
+export {
+  GENERATED_PLUGIN_MARKER,
+  isGeneratedPlugin,
+} from "./templates/plugin-template";
+export {
+  GENERATED_AGENTS_MARKER,
+  isGeneratedAgents,
+} from "./templates/agents-template";
+
+/**
+ * Default files protected by the write-guardrail plugin.
+ */
+export const DEFAULT_PROTECTED_FILES = [
+  "prd.json",
+  "progress.txt",
+  ".ralph-prompt.md",
+  "AGENTS.md",
+] as const;
+
+/**
+ * Entries to add to .gitignore for Ralph-specific files.
+ * These are runtime files that should not be committed.
+ */
+export const GITIGNORE_ENTRIES = [
+  ".ralph-state.json",
+  ".ralph-lock",
+  ".ralph-done",
+] as const;
+
+/**
+ * Header comment for the Ralph gitignore section.
+ */
+export const GITIGNORE_HEADER = "# Ralph - AI agent loop files";
+
+/**
+ * The complete gitignore block including header and entries.
+ */
+export function buildGitignoreBlock(): string {
+  return `${GITIGNORE_HEADER}\n${GITIGNORE_ENTRIES.join("\n")}\n`;
+}
 
 export type InitOptions = {
   planFile: string;
   progressFile: string;
   promptFile: string;
+  pluginFile: string;
+  agentsFile: string;
+  gitignoreFile: string;
   from?: string;
   force?: boolean;
 };
@@ -14,6 +61,7 @@ export type InitResult = {
   created: string[];
   skipped: string[];
   warnings: string[];
+  gitignoreAppended?: boolean;
 };
 
 /**
@@ -124,6 +172,68 @@ function ensureParentDir(path: string): void {
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true });
   }
+}
+
+/**
+ * Parse gitignore content into a set of entries (excluding comments and blank lines).
+ */
+function parseGitignoreEntries(content: string): Set<string> {
+  const entries = new Set<string>();
+  for (const line of content.split("\n")) {
+    const trimmed = line.trim();
+    // Skip comments and blank lines
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    entries.add(trimmed);
+  }
+  return entries;
+}
+
+/**
+ * Update .gitignore with Ralph-specific entries.
+ * Creates the file if it doesn't exist, or appends missing entries if it does.
+ * 
+ * @returns "created" if new file was created, "appended" if entries were added,
+ *          "skipped" if all entries already present
+ */
+async function updateGitignore(
+  gitignorePath: string,
+  result: InitResult
+): Promise<void> {
+  const file = Bun.file(gitignorePath);
+  const exists = await file.exists();
+
+  if (!exists) {
+    // Create new .gitignore with Ralph entries
+    ensureParentDir(gitignorePath);
+    await Bun.write(gitignorePath, buildGitignoreBlock());
+    result.created.push(gitignorePath);
+    return;
+  }
+
+  // Read existing content
+  const content = await file.text();
+  const existingEntries = parseGitignoreEntries(content);
+
+  // Find entries that need to be added
+  const missingEntries = GITIGNORE_ENTRIES.filter(
+    (entry) => !existingEntries.has(entry)
+  );
+
+  if (missingEntries.length === 0) {
+    // All entries already present
+    result.skipped.push(gitignorePath);
+    return;
+  }
+
+  // Append missing entries with header
+  // Ensure file ends with newline before appending
+  const hasTrailingNewline = content.endsWith("\n");
+  const prefix = hasTrailingNewline ? "\n" : "\n\n";
+  const block = `${prefix}${GITIGNORE_HEADER}\n${missingEntries.join("\n")}\n`;
+
+  await Bun.write(gitignorePath, content + block);
+  result.gitignoreAppended = true;
+  result.created.push(gitignorePath);
 }
 
 function extractTasksFromText(content: string): string[] {
@@ -284,6 +394,24 @@ export async function runInit(options: InitOptions): Promise<InitResult> {
     result
   );
   await writeFileIfNeeded(options.promptFile, PROMPT_TEMPLATE, Boolean(options.force), result);
+
+  // Create plugin file (respects --force)
+  await writeFileIfNeeded(options.pluginFile, PLUGIN_TEMPLATE, Boolean(options.force), result);
+
+  // Create AGENTS.md ONLY if it doesn't exist (NEVER overwrite, ignore --force)
+  // This is intentionally different from other files - user's AGENTS.md is sacred
+  const agentsFile = Bun.file(options.agentsFile);
+  const agentsExists = await agentsFile.exists();
+  if (!agentsExists) {
+    ensureParentDir(options.agentsFile);
+    await Bun.write(options.agentsFile, AGENTS_TEMPLATE);
+    result.created.push(options.agentsFile);
+  } else {
+    result.skipped.push(options.agentsFile);
+  }
+
+  // Update .gitignore with Ralph-specific entries
+  await updateGitignore(options.gitignoreFile, result);
 
   if (result.skipped.length > 0 && !options.force) {
     result.warnings.push("Some files already existed. Re-run with --force to overwrite.");
