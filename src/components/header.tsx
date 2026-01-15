@@ -1,4 +1,5 @@
 import { createMemo } from "solid-js";
+import { useTerminalDimensions } from "@opentui/solid";
 import { useTheme } from "../context/ThemeContext";
 import { formatElapsedTime, layout, statusIndicators } from "./tui-theme";
 import type { RalphStatus, UiTask } from "./tui-types";
@@ -64,16 +65,27 @@ function MiniProgressBar(props: {
 export function Header(props: HeaderProps) {
   const { theme } = useTheme();
   const t = () => theme();
+  const terminalDimensions = useTerminalDimensions();
 
   const statusDisplay = () => getStatusDisplay(props.status, theme);
   const elapsedSeconds = createMemo(() => Math.floor(props.elapsedMs / 1000));
   const formattedTime = createMemo(() => formatElapsedTime(elapsedSeconds()));
   const formattedEta = createMemo(() => formatEta(props.eta));
 
+  // Simple task title width calculation:
+  // Terminal width minus fixed elements (right side ~90 chars, left side ~25 chars)
+  // Clamped between 20 (minimum readable) and 120 (maximum useful)
+  const taskMaxWidth = createMemo(() => {
+    const termWidth = terminalDimensions().width;
+    const fixedWidth = 115; // Approximate: right side (90) + left side (25)
+    const available = termWidth - fixedWidth;
+    return Math.max(20, Math.min(available, 120));
+  });
+
   const taskDisplay = createMemo(() => {
     if (!props.selectedTask) return null;
     if (props.status !== "running" && props.status !== "paused") return null;
-    return truncateText(props.selectedTask.title, 40);
+    return truncateText(props.selectedTask.title, taskMaxWidth());
   });
 
   const taskLabel = createMemo(() => taskDisplay());
