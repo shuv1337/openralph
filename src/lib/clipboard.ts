@@ -196,3 +196,88 @@ export async function copyToClipboard(text: string): Promise<ClipboardResult> {
     };
   }
 }
+
+/**
+ * Read text from the system clipboard.
+ *
+ * @returns Promise with the clipboard content, or null if reading failed
+ */
+export async function readFromClipboard(): Promise<string | null> {
+  const platform = process.platform;
+
+  try {
+    if (platform === "win32") {
+      // PowerShell is more reliable for reading clipboard on Windows
+      const proc = Bun.spawn(
+        ["powershell", "-Command", "Get-Clipboard"],
+        { stdout: "pipe", stderr: "pipe" }
+      );
+      const output = await new Response(proc.stdout).text();
+      const exitCode = await proc.exited;
+      if (exitCode === 0) {
+        return output.trim();
+      }
+      return null;
+    }
+
+    if (platform === "darwin") {
+      const proc = Bun.spawn(["pbpaste"], { stdout: "pipe", stderr: "pipe" });
+      const output = await new Response(proc.stdout).text();
+      const exitCode = await proc.exited;
+      if (exitCode === 0) {
+        return output;
+      }
+      return null;
+    }
+
+    if (platform === "linux") {
+      // Try wl-paste first (Wayland), then xclip, then xsel
+      if (process.env.WAYLAND_DISPLAY) {
+        try {
+          const proc = Bun.spawn(["wl-paste"], { stdout: "pipe", stderr: "pipe" });
+          const output = await new Response(proc.stdout).text();
+          const exitCode = await proc.exited;
+          if (exitCode === 0) {
+            return output;
+          }
+        } catch {
+          // Fall through to X11 tools
+        }
+      }
+
+      // Try xclip
+      try {
+        const proc = Bun.spawn(["xclip", "-selection", "clipboard", "-o"], {
+          stdout: "pipe",
+          stderr: "pipe",
+        });
+        const output = await new Response(proc.stdout).text();
+        const exitCode = await proc.exited;
+        if (exitCode === 0) {
+          return output;
+        }
+      } catch {
+        // Try xsel
+      }
+
+      // Try xsel
+      try {
+        const proc = Bun.spawn(["xsel", "--clipboard", "--output"], {
+          stdout: "pipe",
+          stderr: "pipe",
+        });
+        const output = await new Response(proc.stdout).text();
+        const exitCode = await proc.exited;
+        if (exitCode === 0) {
+          return output;
+        }
+      } catch {
+        // No clipboard tool available
+      }
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}

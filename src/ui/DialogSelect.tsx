@@ -1,4 +1,3 @@
-import { useKeyboard } from "@opentui/solid";
 import { TextAttributes } from "@opentui/core";
 import type { KeyEvent } from "@opentui/core";
 import { createSignal, createMemo, For, Show } from "solid-js";
@@ -6,6 +5,7 @@ import fuzzysort from "fuzzysort";
 import { Dialog } from "./Dialog";
 import { useDialog } from "../context/DialogContext";
 import { useTheme } from "../context/ThemeContext";
+import { useKeyboardReliable } from "../hooks/useKeyboardReliable";
 
 export interface SelectOption {
   /** Display title for the option */
@@ -130,18 +130,18 @@ export function DialogSelect(props: DialogSelectProps) {
     pop();
   };
 
-  useKeyboard((e: KeyEvent) => {
+  // Use reliable keyboard hook that works on Windows (avoids onMount issues)
+  // NOTE: Escape is handled by the parent Dialog component via onClose prop
+  // to avoid double-pop when both handlers fire
+  useKeyboardReliable((e: KeyEvent) => {
     // Enter: select current option
     if (e.name === "return" || e.name === "enter" || e.name === "Enter") {
       handleSelect();
       return;
     }
 
-    // Escape: cancel (Dialog handles this too, but we call onCancel)
-    if (e.name === "escape" || e.name === "Escape") {
-      handleCancel();
-      return;
-    }
+    // NOTE: Escape is intentionally NOT handled here - Dialog handles it
+    // via onClose prop to avoid double-triggering pop()
 
     // Up arrow: move selection up
     if (e.name === "up" || e.name === "Up") {
@@ -183,7 +183,7 @@ export function DialogSelect(props: DialogSelectProps) {
       setQuery((prev) => prev + e.raw);
       setSelectedIndex(0); // Reset selection on query change
     }
-  });
+  }, { debugLabel: "DialogSelect" });
 
   const t = theme();
 

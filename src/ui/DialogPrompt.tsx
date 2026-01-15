@@ -1,10 +1,10 @@
-import { useKeyboard } from "@opentui/solid";
 import { TextAttributes } from "@opentui/core";
 import type { KeyEvent } from "@opentui/core";
 import { createSignal } from "solid-js";
 import { Dialog } from "./Dialog";
 import { useDialog } from "../context/DialogContext";
 import { useTheme } from "../context/ThemeContext";
+import { useKeyboardReliable } from "../hooks/useKeyboardReliable";
 
 export type DialogPromptProps = {
   /** Dialog title displayed at the top */
@@ -43,19 +43,17 @@ export function DialogPrompt(props: DialogPromptProps) {
   };
 
   // Handle keyboard input
-  useKeyboard((e: KeyEvent) => {
+  // Use reliable keyboard hook that works on Windows (avoids onMount issues)
+  // NOTE: Escape is handled by the parent Dialog component via onClose prop
+  useKeyboardReliable((e: KeyEvent) => {
     // Enter: submit
     if (e.name === "return" || e.name === "enter" || e.name === "Enter") {
       handleSubmit();
       return;
     }
 
-    // Escape is handled by the base Dialog component, but we also handle it
-    // here to ensure onCancel is called
-    if (e.name === "escape" || e.name === "Escape") {
-      handleCancel();
-      return;
-    }
+    // NOTE: Escape is intentionally NOT handled here - Dialog handles it
+    // via onClose prop to avoid double-triggering pop()
 
     // Backspace: delete last character
     if (e.name === "backspace" || e.name === "Backspace") {
@@ -67,7 +65,7 @@ export function DialogPrompt(props: DialogPromptProps) {
     if (e.raw && e.raw.length === 1 && !e.ctrl && !e.meta) {
       setInput((prev) => prev + e.raw);
     }
-  });
+  }, { debugLabel: "DialogPrompt" });
 
   const t = theme();
 

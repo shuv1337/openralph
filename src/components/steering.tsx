@@ -1,8 +1,8 @@
-import { useKeyboard } from "@opentui/solid";
 import type { KeyEvent } from "@opentui/core";
 import { createSignal, createEffect, onCleanup } from "solid-js";
 import { useTheme } from "../context/ThemeContext";
 import { useInputFocus } from "../context/DialogContext";
+import { useKeyboardReliable } from "../hooks/useKeyboardReliable";
 
 export type SteeringOverlayProps = {
   visible: boolean;
@@ -56,7 +56,8 @@ export function SteeringOverlay(props: SteeringOverlayProps) {
   };
 
   // Handle keyboard events for the steering input
-  useKeyboard((e: KeyEvent) => {
+  // Use reliable keyboard hook that works on Windows (avoids onMount issues)
+  useKeyboardReliable((e: KeyEvent) => {
     if (!props.visible) return;
 
     // ESC: close overlay
@@ -85,7 +86,7 @@ export function SteeringOverlay(props: SteeringOverlayProps) {
     if (e.raw && e.raw.length === 1 && !e.ctrl && !e.meta) {
       setInput((prev) => prev + e.raw);
     }
-  });
+  }, { debugLabel: "SteeringOverlay" });
 
   if (!props.visible) return null;
 

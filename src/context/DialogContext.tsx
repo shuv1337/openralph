@@ -7,6 +7,7 @@ import {
   JSX,
 } from "solid-js";
 import type { Accessor } from "solid-js";
+import { log } from "../util/log";
 
 /**
  * Type for a dialog component that can be rendered in the stack.
@@ -77,6 +78,7 @@ export function DialogProvider(props: DialogProviderProps) {
    * Also sets inputFocused to true when a dialog opens.
    */
   const show = (dialog: DialogComponent) => {
+    log("dialog", "show() called", { stackSize: stack().length + 1 });
     setStack((prev) => [...prev, dialog]);
     setInputFocused(true);
   };
@@ -86,6 +88,7 @@ export function DialogProvider(props: DialogProviderProps) {
    * If stack is empty, just pushes the dialog.
    */
   const replace = (dialog: DialogComponent) => {
+    log("dialog", "replace() called", { stackSize: stack().length });
     setStack((prev) => {
       if (prev.length === 0) {
         return [dialog];
@@ -99,6 +102,7 @@ export function DialogProvider(props: DialogProviderProps) {
    * Resets inputFocused to false.
    */
   const clear = () => {
+    log("dialog", "clear() called");
     setStack([]);
     setInputFocused(false);
   };
@@ -110,6 +114,11 @@ export function DialogProvider(props: DialogProviderProps) {
   const pop = () => {
     setStack((prev) => {
       const newStack = prev.slice(0, -1);
+      log("dialog", "pop() called", { 
+        prevSize: prev.length, 
+        newSize: newStack.length,
+        willResetFocus: newStack.length === 0
+      });
       if (newStack.length === 0) {
         setInputFocused(false);
       }

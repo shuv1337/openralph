@@ -1,8 +1,8 @@
-import { useKeyboard } from "@opentui/solid";
 import type { KeyEvent } from "@opentui/core";
 import type { JSX } from "solid-js";
 import { useDialog } from "../context/DialogContext";
 import { useTheme } from "../context/ThemeContext";
+import { useKeyboardReliable } from "../hooks/useKeyboardReliable";
 
 export type DialogProps = {
   /** Dialog content */
@@ -24,14 +24,19 @@ export function Dialog(props: DialogProps) {
   const { theme } = useTheme();
 
   // Handle Escape key to close dialog
-  useKeyboard((e: KeyEvent) => {
+  // Use reliable keyboard hook that works on Windows (avoids onMount issues)
+  // NOTE: Only call pop() if there's no onClose handler - otherwise let the
+  // parent component handle cleanup via onClose to avoid double-pop
+  useKeyboardReliable((e: KeyEvent) => {
     if (e.name === "escape" || e.name === "Escape") {
       if (props.onClose) {
         props.onClose();
+        // Don't call pop() here - onClose is expected to handle it
+      } else {
+        pop();
       }
-      pop();
     }
-  });
+  }, { debugLabel: "Dialog" });
 
   const t = theme();
 

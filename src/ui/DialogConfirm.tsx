@@ -1,9 +1,9 @@
-import { useKeyboard } from "@opentui/solid";
 import { TextAttributes } from "@opentui/core";
 import type { KeyEvent } from "@opentui/core";
 import { Dialog } from "./Dialog";
 import { useDialog } from "../context/DialogContext";
 import { useTheme } from "../context/ThemeContext";
+import { useKeyboardReliable } from "../hooks/useKeyboardReliable";
 
 export type DialogConfirmProps = {
   /** Dialog title displayed at the top */
@@ -37,7 +37,8 @@ export function DialogConfirm(props: DialogConfirmProps) {
   };
 
   // Handle Y/N keyboard shortcuts
-  useKeyboard((e: KeyEvent) => {
+  // Use reliable keyboard hook that works on Windows (avoids onMount issues)
+  useKeyboardReliable((e: KeyEvent) => {
     // Y key for confirm
     if ((e.name === "y" || e.name === "Y") && !e.ctrl && !e.meta) {
       handleConfirm();
@@ -48,7 +49,7 @@ export function DialogConfirm(props: DialogConfirmProps) {
       handleCancel();
       return;
     }
-  });
+  }, { debugLabel: "DialogConfirm" });
 
   const t = theme();
 

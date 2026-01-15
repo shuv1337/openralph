@@ -1,9 +1,9 @@
-import { useKeyboard } from "@opentui/solid";
 import { TextAttributes } from "@opentui/core";
 import type { KeyEvent } from "@opentui/core";
 import { Dialog } from "./Dialog";
 import { useDialog } from "../context/DialogContext";
 import { useTheme } from "../context/ThemeContext";
+import { useKeyboardReliable } from "../hooks/useKeyboardReliable";
 
 export type DialogAlertProps = {
   /** Dialog title displayed at the top */
@@ -49,19 +49,17 @@ export function DialogAlert(props: DialogAlertProps) {
   };
 
   // Handle Enter/Escape keyboard shortcuts
-  useKeyboard((e: KeyEvent) => {
+  // Use reliable keyboard hook that works on Windows (avoids onMount issues)
+  // NOTE: Escape is handled by the parent Dialog component via onClose prop
+  useKeyboardReliable((e: KeyEvent) => {
     // Enter key to dismiss
     if (e.name === "return" || e.name === "enter" || e.name === "Enter") {
       handleDismiss();
       return;
     }
-    // Escape is also handled by base Dialog, but we handle it here
-    // to ensure onDismiss is called
-    if (e.name === "escape" || e.name === "Escape") {
-      handleDismiss();
-      return;
-    }
-  });
+    // NOTE: Escape is intentionally NOT handled here - Dialog handles it
+    // via onClose prop to avoid double-triggering pop()
+  }, { debugLabel: "DialogAlert" });
 
   const variantColor = getVariantColor();
   const t = theme();
