@@ -55,7 +55,9 @@ export function Footer(props: FooterProps) {
             <text fg={t().secondary}>{formatNumber(props.tokens.input)}in</text>
             <text fg={t().textMuted}>/</text>
             <text fg={t().secondary}>{formatNumber(props.tokens.output)}out</text>
-            {props.tokens.reasoning > 0 && (
+            {/* Use optional chaining to guard against SolidJS reactivity race:
+                tokens may become undefined mid-render when onSessionEnded fires */}
+            {props.tokens?.reasoning != null && props.tokens.reasoning > 0 && (
               <>
                 <text fg={t().textMuted}>/</text>
                 <text fg={t().secondary}>{formatNumber(props.tokens.reasoning)}r</text>
