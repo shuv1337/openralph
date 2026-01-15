@@ -1,4 +1,4 @@
-import { render, useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/solid";
+import { render, useRenderer, useTerminalDimensions } from "@opentui/solid";
 import type { KeyEvent } from "@opentui/core";
 import { createEffect, createMemo, createSignal, onCleanup, onMount, Setter, type Accessor } from "solid-js";
 import { Header } from "./components/header";
@@ -26,6 +26,7 @@ import { parsePlanTasks, type Task } from "./plan";
 import { layout } from "./components/tui-theme";
 import type { DetailsViewMode, UiTask } from "./components/tui-types";
 import { isWindowsTerminal, isLegacyConsole } from "./lib/windows-console";
+import { useKeyboardReliable } from "./hooks/useKeyboardReliable";
 
 
 import { log } from "./util/log";
@@ -443,35 +444,72 @@ function AppContent(props: AppContentProps) {
   
   // Windows-specific: Poll for terminal resize since SIGWINCH may not work reliably
   // This supplements the native resize event handling
+  // IMPORTANT: Uses createEffect instead of onMount for reliable Windows initialization
   const isWindows = process.platform === "win32";
   let lastKnownWidth = 0;
   let lastKnownHeight = 0;
+  let resizePollInterval: ReturnType<typeof setInterval> | null = null;
   
-  onMount(() => {
-    if (isWindows) {
-      // Initialize with current dimensions
-      lastKnownWidth = process.stdout.columns || 80;
-      lastKnownHeight = process.stdout.rows || 24;
+  // Use createEffect for immediate initialization (onMount is unreliable on Windows)
+  createEffect(() => {
+    if (!isWindows || resizePollInterval) return;
+    
+    // Initialize with current dimensions
+    lastKnownWidth = process.stdout.columns || 80;
+    lastKnownHeight = process.stdout.rows || 24;
+    
+    // Listen for native stdout resize event (works on Windows Terminal)
+    const handleStdoutResize = () => {
+      const currentWidth = process.stdout.columns || 80;
+      const currentHeight = process.stdout.rows || 24;
       
-      // Poll for resize changes every 500ms on Windows
-      const resizePollInterval = setInterval(() => {
-        const currentWidth = process.stdout.columns || 80;
-        const currentHeight = process.stdout.rows || 24;
+      if (currentWidth !== lastKnownWidth || currentHeight !== lastKnownHeight) {
+        lastKnownWidth = currentWidth;
+        lastKnownHeight = currentHeight;
+        log("app", "Windows resize detected via stdout event", { width: currentWidth, height: currentHeight });
         
-        if (currentWidth !== lastKnownWidth || currentHeight !== lastKnownHeight) {
-          lastKnownWidth = currentWidth;
-          lastKnownHeight = currentHeight;
-          log("app", "Windows resize detected via polling", { width: currentWidth, height: currentHeight });
-          
-          // Force a render request to update the layout
-          props.renderer.requestRender?.();
-        }
-      }, 500);
-      
-      onCleanup(() => {
-        clearInterval(resizePollInterval);
-      });
+        // Emit SIGWINCH to trigger OpenTUI's internal resize handler
+        process.emit("SIGWINCH" as never);
+        
+        // Also request a render after a short delay to ensure layout updates
+        setTimeout(() => props.renderer.requestRender?.(), 50);
+      }
+    };
+    
+    // Add stdout resize listener (primary mechanism for Windows Terminal)
+    if (process.stdout.isTTY) {
+      process.stdout.on("resize", handleStdoutResize);
     }
+    
+    // Poll for resize changes every 500ms as fallback for legacy consoles
+    // PowerShell may not fire stdout resize events in all cases
+    resizePollInterval = setInterval(() => {
+      const currentWidth = process.stdout.columns || 80;
+      const currentHeight = process.stdout.rows || 24;
+      
+      if (currentWidth !== lastKnownWidth || currentHeight !== lastKnownHeight) {
+        lastKnownWidth = currentWidth;
+        lastKnownHeight = currentHeight;
+        log("app", "Windows resize detected via polling", { width: currentWidth, height: currentHeight });
+        
+        // Emit SIGWINCH to trigger OpenTUI's internal resize handler
+        // This ensures the renderer properly recalculates layout
+        process.emit("SIGWINCH" as never);
+        
+        // Request render after a short delay
+        setTimeout(() => props.renderer.requestRender?.(), 50);
+      }
+    }, 500);
+  });
+  
+  onCleanup(() => {
+    if (resizePollInterval) {
+      clearInterval(resizePollInterval);
+      resizePollInterval = null;
+    }
+    // Note: We can't easily remove the stdout resize listener here
+    // because the function reference isn't stored, but it will be
+    // cleaned up when the process exits
   });
   
   const [selectedTaskIndex, setSelectedTaskIndex] = createSignal(0);
@@ -1084,7 +1122,17 @@ function AppContent(props: AppContentProps) {
   };
 
   // Keyboard handling - now inside context providers
-  useKeyboard((e: KeyEvent) => {
+  // Use reliable keyboard hook that works on Windows (avoids onMount issues)
+  useKeyboardReliable((e: KeyEvent) => {
+    // Log every key event on Windows for debugging (after first event)
+    if (process.platform === "win32" && props.keyboardEventNotified()) {
+      log("keyboard", "AppContent key event", {
+        key: e.name,
+        isInputFocused: isInputFocused(),
+        dialogStack: dialog.stack().length,
+      });
+    }
+    
     // Notify caller that OpenTUI keyboard handling is working
     // Also log the first key event for diagnostic purposes (Phase 1.1)
     if (!props.keyboardEventNotified() && props.onKeyboardEvent) {
@@ -1114,7 +1162,13 @@ function AppContent(props: AppContentProps) {
     }
 
     // Skip if any input is focused (dialogs, steering mode, etc.)
-    if (isInputFocused()) return;
+    if (isInputFocused()) {
+      log("keyboard", "AppContent: skipping due to isInputFocused", {
+        commandMode: props.commandMode(),
+        dialogInputFocused: dialogInputFocused(),
+      });
+      return;
+    }
 
     if (showHelp()) {
       if (key === "escape" || key === "?") {
@@ -1221,7 +1275,7 @@ function AppContent(props: AppContentProps) {
     }
 
     // Note: Ctrl+C is handled above as a safety valve (before isInputFocused check)
-  });
+  }, { debugLabel: "AppContent" });
 
   return (
     <box
