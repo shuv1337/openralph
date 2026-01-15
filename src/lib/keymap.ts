@@ -67,6 +67,13 @@ export const keymap = {
     key: "c",
     label: "C",
   } as KeybindDef,
+
+  /** Toggle showing completed tasks in task list */
+  toggleCompleted: {
+    key: "c",
+    shift: true,
+    label: "Shift+C",
+  } as KeybindDef,
 } as const;
 
 /**

@@ -242,6 +242,8 @@ export function App(props: AppProps) {
   // Tasks panel state signals
   const [showTasks, setShowTasks] = createSignal(true);
   const [tasks, setTasks] = createSignal<Task[]>([]);
+  // Whether to show completed tasks in the task list (default: false for optimization)
+  const [showCompletedTasks, setShowCompletedTasks] = createSignal(false);
 
   // Function to refresh tasks from plan file
   const refreshTasks = async () => {
@@ -395,6 +397,8 @@ export function App(props: AppProps) {
               showTasks={showTasks}
               setShowTasks={setShowTasks}
               tasks={tasks}
+              showCompletedTasks={showCompletedTasks}
+              setShowCompletedTasks={setShowCompletedTasks}
               loopStore={loopStore}
               loopStats={loopStats}
             />
@@ -424,6 +428,8 @@ type AppContentProps = {
   showTasks: () => boolean;
   setShowTasks: (v: boolean) => void;
   tasks: () => Task[];
+  showCompletedTasks: () => boolean;
+  setShowCompletedTasks: (v: boolean) => void;
   // Hook-based state stores (for gradual migration)
   loopStore: LoopStateStore;
   loopStats: LoopStatsStore;
@@ -519,11 +525,12 @@ function AppContent(props: AppContentProps) {
   });
   
   const [selectedTaskIndex, setSelectedTaskIndex] = createSignal(0);
-  const [detailsViewMode, setDetailsViewMode] = createSignal<DetailsViewMode>("details");
+  const [detailsViewMode, setDetailsViewMode] = createSignal<DetailsViewMode>("output");
   const [showHelp, setShowHelp] = createSignal(false);
   const [showDashboard, setShowDashboard] = createSignal(false);
 
-  const uiTasks = createMemo<UiTask[]>(() =>
+  // All tasks converted to UiTask format
+  const allUiTasks = createMemo<UiTask[]>(() =>
     props.tasks().map((task) => ({
       id: task.id,
       title: task.text,
@@ -531,6 +538,15 @@ function AppContent(props: AppContentProps) {
       line: task.line,
     }))
   );
+
+  // Filtered tasks based on showCompletedTasks setting (default: hide completed for optimization)
+  const uiTasks = createMemo<UiTask[]>(() => {
+    const all = allUiTasks();
+    if (props.showCompletedTasks()) {
+      return all;
+    }
+    return all.filter((task) => task.status !== "done");
+  });
 
   const selectedTask = createMemo(() => {
     const list = uiTasks();
@@ -731,6 +747,20 @@ function AppContent(props: AppContentProps) {
         onSelect: () => {
           log("app", "Tasks panel toggled via command palette");
           props.setShowTasks(!props.showTasks());
+        },
+      },
+    ]);
+
+    // Register "Toggle completed tasks" action
+    command.register("toggleCompletedTasks", () => [
+      {
+        title: props.showCompletedTasks() ? "Hide completed tasks" : "Show completed tasks",
+        value: "toggleCompletedTasks",
+        description: "Show/hide completed tasks in the task list",
+        keybind: keymap.toggleCompleted.label,
+        onSelect: () => {
+          log("app", "Completed tasks toggled via command palette", { showCompleted: !props.showCompletedTasks() });
+          props.setShowCompletedTasks(!props.showCompletedTasks());
         },
       },
     ]);
@@ -1216,6 +1246,13 @@ function AppContent(props: AppContentProps) {
       if (selectedTaskIndex() < uiTasks().length - 1) {
         setSelectedTaskIndex(selectedTaskIndex() + 1);
       }
+      return;
+    }
+
+    // Shift+C: toggle completed tasks visibility (check before plain C)
+    if (matchesKeybind(e, keymap.toggleCompleted)) {
+      log("app", "Completed tasks toggled via Shift+C", { showCompleted: !props.showCompletedTasks() });
+      props.setShowCompletedTasks(!props.showCompletedTasks());
       return;
     }
 
