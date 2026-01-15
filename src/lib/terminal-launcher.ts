@@ -122,6 +122,24 @@ export const knownTerminals: KnownTerminal[] = [
     platforms: ["win32"],
   },
   {
+    name: "Windows Terminal (New Tab)",
+    command: "wt",
+    args: ["-w", "0", "nt", "-d", ".", "cmd", "/k", "{cmd}"],
+    platforms: ["win32"],
+  },
+  {
+    name: "PowerShell Core",
+    command: "pwsh",
+    args: ["-NoExit", "-Command", "{cmd}"],
+    platforms: ["win32"],
+  },
+  {
+    name: "Windows PowerShell",
+    command: "powershell",
+    args: ["-NoExit", "-Command", "{cmd}"],
+    platforms: ["win32"],
+  },
+  {
     name: "Command Prompt",
     command: "cmd",
     args: ["/c", "start", "cmd", "/k", "{cmd}"],
@@ -133,6 +151,21 @@ export const knownTerminals: KnownTerminal[] = [
  * Cache for detected terminals.
  */
 let detectedTerminalsCache: KnownTerminal[] | null = null;
+
+/**
+ * Escape a command string for Windows shell execution.
+ * Handles special characters that need escaping in cmd.exe and PowerShell.
+ */
+function escapeForWindowsShell(cmd: string): string {
+  if (process.platform !== "win32") return cmd;
+  
+  // Check if the command contains characters that need escaping
+  const needsEscaping = /[&|<>^]/.test(cmd);
+  if (!needsEscaping) return cmd;
+  
+  // Wrap in double quotes and escape internal double quotes
+  return `"${cmd.replace(/"/g, '""')}"`;
+}
 
 /**
  * Check if a command is available in PATH.
@@ -206,8 +239,13 @@ export async function launchTerminal(
   cmd: string
 ): Promise<LaunchResult> {
   try {
+    // Apply Windows-specific escaping if needed
+    const escapedCmd = terminal.platforms.includes("win32")
+      ? escapeForWindowsShell(cmd)
+      : cmd;
+    
     // Build args array with {cmd} placeholder replacement
-    const args = terminal.args.map((arg) => arg.replace("{cmd}", cmd));
+    const args = terminal.args.map((arg) => arg.replace("{cmd}", escapedCmd));
 
     // Spawn detached process
     const proc = Bun.spawn([terminal.command, ...args], {
