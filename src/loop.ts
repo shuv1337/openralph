@@ -465,6 +465,8 @@ export type LoopCallbacks = {
   onBackoffCleared?: () => void;
   /** Called when token usage data is received from step-finish events */
   onTokens?: (tokens: TokenUsage) => void;
+  /** Called when the plan file is modified (for real-time task list updates) */
+  onPlanFileModified?: () => void;
 };
 
 type PauseState = {
@@ -852,6 +854,21 @@ export async function runLoop(
             sessionActive = false;
             callbacks.onSessionEnded?.(sessionId);
             throw new Error(errorMessage);
+          }
+
+          // Plan file modification detection (for real-time task updates)
+          // Handles both file.edited (agent writes) and file.watcher.updated (external changes)
+          if (event.type === "file.edited" || event.type === "file.watcher.updated") {
+            const filePath = event.properties.file;
+            // Match against plan file - handles both relative and absolute paths
+            // Uses endsWith to handle cases where event provides absolute path
+            const planFileName = options.planFile.split(/[/\\]/).pop() || options.planFile;
+            if (filePath === options.planFile || 
+                filePath.endsWith(`/${planFileName}`) || 
+                filePath.endsWith(`\\${planFileName}`)) {
+              log("loop", "Plan file modified", { filePath, eventType: event.type });
+              callbacks.onPlanFileModified?.();
+            }
           }
         }
 

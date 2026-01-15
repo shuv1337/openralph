@@ -1120,6 +1120,22 @@ async function main() {
           terminalBuffer: mode === "pty" ? "" : prev.terminalBuffer,
         }));
       },
+      // Real-time plan file modification handler with debouncing
+      // Uses 150ms debounce to batch rapid file edits (e.g., multiple task updates)
+      onPlanFileModified: (() => {
+        let debounceTimeout: ReturnType<typeof setTimeout> | null = null;
+        return () => {
+          if (debounceTimeout) {
+            clearTimeout(debounceTimeout);
+          }
+          debounceTimeout = setTimeout(() => {
+            debounceTimeout = null;
+            log("main", "Plan file modified, triggering task refresh");
+            stateSetters.triggerTaskRefresh();
+            stateSetters.requestRender();
+          }, 150);
+        };
+      })(),
     }, abortController.signal).catch((error) => {
       log("main", "Loop error", { error: error instanceof Error ? error.message : String(error) });
       console.error("Loop error:", error);

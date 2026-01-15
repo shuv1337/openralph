@@ -51,6 +51,8 @@ export type AppStateSetters = {
   setSendMessage: (fn: ((message: string) => Promise<void>) | null) => void;
   /** Request a render update - call after session events or state changes */
   requestRender: () => void;
+  /** Trigger immediate task list refresh (for real-time plan file updates) */
+  triggerTaskRefresh: () => void;
 };
 
 /**
@@ -66,6 +68,7 @@ let globalSetState: Setter<LoopState> | null = null;
 let globalUpdateIterationTimes: ((times: number[]) => void) | null = null;
 let globalSendMessage: ((message: string) => Promise<void>) | null = null;
 let globalRenderer: ReturnType<typeof useRenderer> | null = null;
+let globalTriggerTaskRefresh: (() => void) | null = null;
 let rendererDestroyed = false;
 
 export function destroyRenderer(): void {
@@ -159,7 +162,11 @@ export async function startApp(props: StartAppProps): Promise<StartAppResult> {
     updateIterationTimes: (times) => {
       iterationTimesRef.length = 0;
       iterationTimesRef.push(...times);
-      globalUpdateIterationTimes!(times);
+      // Guard against null - callback may be nullified during TUI cleanup
+      // while loop iteration is still completing (race condition on quit)
+      if (globalUpdateIterationTimes) {
+        globalUpdateIterationTimes(times);
+      }
     },
     setSendMessage: (fn) => {
       globalSendMessage = fn;
@@ -167,6 +174,13 @@ export async function startApp(props: StartAppProps): Promise<StartAppResult> {
     requestRender: () => {
       // Request a render from the global renderer if available
       globalRenderer?.requestRender?.();
+    },
+    triggerTaskRefresh: () => {
+      // Trigger immediate task list refresh if available
+      // Guard against null during TUI cleanup
+      if (globalTriggerTaskRefresh) {
+        globalTriggerTaskRefresh();
+      }
     },
   };
 
@@ -311,6 +325,8 @@ export function App(props: AppProps) {
     // This keeps the hook-based stats in sync with external updates
     loopStats.initialize(props.persistedState.startTime, times);
   };
+  // Export refreshTasks for real-time plan file updates
+  globalTriggerTaskRefresh = refreshTasks;
 
   // Update elapsed time and ETA periodically (5000ms to reduce render frequency)
   // Uses loopStats hook for pause-aware elapsed time tracking
@@ -333,6 +349,7 @@ export function App(props: AppProps) {
     // Clean up module-level references
     globalSetState = null;
     globalUpdateIterationTimes = null;
+    globalTriggerTaskRefresh = null;
     globalRenderer = null;
   });
 
