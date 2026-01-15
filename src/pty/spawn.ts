@@ -8,6 +8,25 @@ export function spawnPty(command: string[], options: PtyOptions = {}): PtyProces
   const exitCallbacks: Array<(info: { exitCode: number; signal?: number }) => void> = [];
   let isCleanedUp = false;
 
+  // Windows-specific environment variables for better terminal emulation
+  const windowsEnv = process.platform === "win32" ? {
+    // Enable VT processing for the child process
+    TERM: "xterm-256color",
+    // Windows Terminal detection (pass through if set)
+    WT_SESSION: process.env.WT_SESSION || "",
+    // Force color output
+    FORCE_COLOR: "1",
+  } : {};
+
+  const combinedEnv = {
+    ...process.env,
+    ...windowsEnv,
+    ...env,
+    TERM: "xterm-256color",
+    COLUMNS: String(cols),
+    LINES: String(rows),
+  };
+
   const pushData = (data: string) => {
     if (isCleanedUp) return;
     for (const cb of dataCallbacks) {
@@ -40,7 +59,7 @@ export function spawnPty(command: string[], options: PtyOptions = {}): PtyProces
   try {
     proc = Bun.spawn(command, {
       cwd,
-      env: { ...process.env, ...env, TERM: "xterm-256color", COLUMNS: String(cols), LINES: String(rows) },
+      env: combinedEnv,
       terminal: {
         cols,
         rows,
@@ -54,7 +73,7 @@ export function spawnPty(command: string[], options: PtyOptions = {}): PtyProces
     log("pty", "terminal spawn failed, falling back to legacy PTY", { error: String(error) });
     proc = Bun.spawn(command, {
       cwd,
-      env: { ...process.env, ...env, TERM: "xterm-256color", COLUMNS: String(cols), LINES: String(rows) },
+      env: combinedEnv,
       stdin: "pty",
       stdout: "pipe",
       stderr: "pipe",
