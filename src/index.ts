@@ -321,7 +321,7 @@ async function main() {
     .usage("$0 [options]")
     .command(
       "init",
-      "Initialize PRD plan, progress log, and prompt template",
+      "Initialize PRD plan, progress log, prompt, plugin, AGENTS.md, and .gitignore",
       (cmd) =>
         cmd
           .option("from", {

@@ -97,15 +97,23 @@ ralph init --from plan.md          # convert unstructured plan to PRD JSON
 ### Init Subcommand
 
 ```bash
-ralph init                    # create template PRD and prompt
+ralph init                    # create template PRD, prompt, plugin, and AGENTS.md
 ralph init --from plan.md     # convert markdown plan to PRD JSON
 ralph init --force            # overwrite existing files
 ```
 
+The `init` command creates:
+- `prd.json` - PRD plan file (wrapped format with metadata)
+- `progress.txt` - Progress log
+- `.ralph-prompt.md` - Prompt template
+- `.opencode/plugin/ralph-write-guardrail.ts` - Write guardrail plugin
+- `AGENTS.md` - Project configuration for AI agents (never overwritten)
+- `.gitignore` entries - Adds Ralph runtime files to .gitignore
+
 | Option | Description |
 |--------|-------------|
 | `--from` | Source plan or notes to convert into PRD JSON |
-| `--force` | Overwrite existing files |
+| `--force` | Overwrite existing files (except AGENTS.md) |
 
 **Default prompt:**
 ```
@@ -150,6 +158,8 @@ Ralph supports multiple adapters for running the AI agent:
 | `.ralph-lock` | Prevents multiple instances |
 | `.ralph-done` | Agent creates this when all tasks complete |
 | `.ralph-pause` | Created by `p` key to pause loop |
+| `.opencode/plugin/ralph-write-guardrail.ts` | Protects files from AI modification |
+| `AGENTS.md` | Project configuration for AI agents |
 
 **Generated file markers:** Files created by `ralph init` include markers so `ralph --reset` can identify and remove them safely without touching user-created files:
 - `prd.json`: Wrapped with `{ metadata: { generated: true, ... }, items: [...] }`
@@ -243,6 +253,7 @@ Ralph writes operational learnings here. Future iterations read it.
 | `:` | Steering mode (send message to agent) |
 | `t` | Launch terminal with attach command |
 | `Shift+T` | Toggle tasks panel |
+| `Shift+C` | Toggle completed tasks / Copy attach command |
 | `o` | Toggle Details/Output view |
 | `d` | Toggle progress dashboard |
 | `?` | Show help overlay |
