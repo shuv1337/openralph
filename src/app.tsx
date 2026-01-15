@@ -49,6 +49,8 @@ export type AppStateSetters = {
   setState: Setter<LoopState>;
   updateIterationTimes: (times: number[]) => void;
   setSendMessage: (fn: ((message: string) => Promise<void>) | null) => void;
+  /** Request a render update - call after session events or state changes */
+  requestRender: () => void;
 };
 
 /**
@@ -161,6 +163,10 @@ export async function startApp(props: StartAppProps): Promise<StartAppResult> {
     },
     setSendMessage: (fn) => {
       globalSendMessage = fn;
+    },
+    requestRender: () => {
+      // Request a render from the global renderer if available
+      globalRenderer?.requestRender?.();
     },
   };
 

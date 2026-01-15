@@ -962,6 +962,8 @@ async function main() {
         saveState(stateToUse);
         // Update the iteration times in the app for ETA calculation
         stateSetters.updateIterationTimes([...stateToUse.iterationTimes]);
+        // Trigger render when iteration ends
+        stateSetters.requestRender();
       },
       onTasksUpdated: (done, total) => {
         log("main", "onTasksUpdated", { done, total });
@@ -990,6 +992,8 @@ async function main() {
           ...prev,
           status: "paused",
         }));
+        // Trigger render when paused
+        stateSetters.requestRender();
       },
       onResume: () => {
         // Update state.status to "running"
@@ -997,6 +1001,8 @@ async function main() {
           ...prev,
           status: "running",
         }));
+        // Trigger render when resumed
+        stateSetters.requestRender();
       },
       onComplete: () => {
         batchedUpdater.flushNow();
@@ -1014,6 +1020,8 @@ async function main() {
             isIdle: true,
           };
         });
+        // Trigger render when complete
+        stateSetters.requestRender();
       },
       onError: (error) => {
         // Update state.status to "error" and set state.error
@@ -1022,6 +1030,8 @@ async function main() {
           status: "error",
           error,
         }));
+        // Trigger render on error
+        stateSetters.requestRender();
       },
       onIdleChanged: (isIdle) => {
         // Update isIdle state for idle mode optimization
@@ -1029,6 +1039,10 @@ async function main() {
           ...prev,
           isIdle,
         }));
+        // Trigger render when session becomes idle (completed processing)
+        if (isIdle) {
+          stateSetters.requestRender();
+        }
       },
       onSessionCreated: (session) => {
         // Store session info in state for steering mode
@@ -1043,6 +1057,8 @@ async function main() {
         }));
         // Store sendMessage function for steering overlay
         stateSetters.setSendMessage(session.sendMessage);
+        // Trigger render when new session starts
+        stateSetters.requestRender();
       },
       onSessionEnded: (_sessionId) => {
         // Clear session fields when session ends
@@ -1056,6 +1072,8 @@ async function main() {
         }));
         // Clear sendMessage function
         stateSetters.setSendMessage(null);
+        // Trigger render when session ends (cleanup complete)
+        stateSetters.requestRender();
       },
       onBackoff: (backoffMs, retryAt) => {
         // Update state with backoff info for retry countdown display
