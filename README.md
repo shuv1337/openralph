@@ -1,22 +1,40 @@
+<div align="center">
+
 # openralph
 
-AI agent loop for autonomous task execution. Reads a PRD, picks one task, completes it, commits, repeats.
+[![npm version](https://img.shields.io/npm/v/openralph?style=flat-square&color=blue)](https://www.npmjs.com/package/openralph)
+[![npm downloads](https://img.shields.io/npm/dm/openralph?style=flat-square&color=green)](https://www.npmjs.com/package/openralph)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
+[![Bun](https://img.shields.io/badge/Bun-v1.0+-black?style=flat-square&logo=bun)](https://bun.sh)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
+
+**AI agent loop for autonomous task execution.**
+
+Reads a PRD, picks one task, completes it, commits, repeats.
+
+[Quick Start](#quick-start) •
+[Features](#features) •
+[Usage](#usage) •
+[Config](#configuration) •
+[Docs](#writing-prds)
+
+</div>
+
+---
 
 <p align="center">
-  <img src="ralph-task.jpg" alt="Ralph TUI - Task view with PRD items" width="100%" />
+  <img src="assets/images/ralph-task.jpg" alt="Ralph TUI - Task view with PRD items" width="100%" />
 </p>
 
 <p align="center">
-  <img src="ralph-output details.jpg" alt="Ralph TUI - Output view showing agent activity" width="100%" />
+  <img src="assets/images/ralph-output details.jpg" alt="Ralph TUI - Output view showing agent activity" width="100%" />
 </p>
 
 <p align="center">
-  <img src="openralph-terminal.jpg" alt="Ralph with openralph terminal side-by-side" width="100%" />
+  <img src="assets/images/openralph-terminal.jpg" alt="Ralph with openralph terminal side-by-side" width="100%" />
 </p>
 
-## Acknowledgements
-
-openralph is a fork of the original `opencode-ralph` project. Huge thanks to Hona for the original work and inspiration: https://github.com/hona/opencode-ralph.
+---
 
 ## Quick Start
 
@@ -43,6 +61,21 @@ bun install
 bun run build:single  # compiles for current platform
 ```
 
+---
+
+## Features
+
+- **Autonomous Task Execution** — AI agent reads your PRD, picks tasks, and completes them one by one
+- **Context-Aware Loop** — Re-reads full context every iteration, eliminating context drift
+- **Beautiful TUI** — Real-time progress dashboard with task tracking and agent activity logs
+- **Multiple Adapters** — Works with OpenCode server, opencode-run, or Codex CLI
+- **Headless Mode** — CI-friendly output with JSON/JSONL/text formats
+- **Session Safety** — Lock files prevent multiple instances; graceful shutdown with state persistence
+- **Smart Resume** — Automatically resumes from where it left off after interruption
+- **PRD Conversion** — Convert markdown plans to structured PRD JSON with `ralph init --from`
+
+---
+
 ## What is Ralph?
 
 Ralph-driven development forces an AI agent to re-read full context every iteration, eliminating context drift. Each loop:
@@ -60,7 +93,11 @@ The agent never pushes—only commits—so you maintain review control.
 - `AGENTS.md` accumulates wisdom so future iterations don't rediscover fire.
 - Human review checkpoint before anything goes live.
 
-See: [ghuntley.com/ralph](https://ghuntley.com/ralph/) · [lukeparker.dev/stop-chatting-with-ai-start-loops-ralph-driven-development](https://lukeparker.dev/stop-chatting-with-ai-start-loops-ralph-driven-development)
+**Learn more:**
+- [ghuntley.com/ralph](https://ghuntley.com/ralph/)
+- [lukeparker.dev/stop-chatting-with-ai-start-loops-ralph-driven-development](https://lukeparker.dev/stop-chatting-with-ai-start-loops-ralph-driven-development)
+
+---
 
 ## Usage
 
@@ -72,6 +109,8 @@ ralph --model anthropic/claude-opus-4  # different model
 ralph --reset                      # remove generated files and state, then exit
 ralph init --from plan.md          # convert unstructured plan to PRD JSON
 ```
+
+### CLI Options
 
 | Option | Default | Description |
 |--------|---------|-------------|
@@ -97,30 +136,35 @@ ralph init --from plan.md          # convert unstructured plan to PRD JSON
 
 ### Init Subcommand
 
-
 ```bash
 ralph init                    # create template PRD, prompt, plugin, and AGENTS.md
 ralph init --from plan.md     # convert markdown plan to PRD JSON
 ralph init --force            # overwrite existing files
 ```
 
-The `init` command creates:
-- `prd.json` - PRD plan file (wrapped format with metadata)
-- `progress.txt` - Progress log
-- `.ralph-prompt.md` - Prompt template
-- `.opencode/plugin/ralph-write-guardrail.ts` - Write guardrail plugin
-- `AGENTS.md` - Project configuration for AI agents (never overwritten)
-- `.gitignore` entries - Adds Ralph runtime files to .gitignore
+Creates these files:
+- `prd.json` — PRD plan file (wrapped format with metadata)
+- `progress.txt` — Progress log
+- `.ralph-prompt.md` — Prompt template
+- `.opencode/plugin/ralph-write-guardrail.ts` — Write guardrail plugin
+- `AGENTS.md` — Project configuration for AI agents (never overwritten)
+- `.gitignore` entries — Adds Ralph runtime files to .gitignore
 
 | Option | Description |
 |--------|-------------|
 | `--from` | Source plan or notes to convert into PRD JSON |
 | `--force` | Overwrite existing files (except AGENTS.md) |
 
-**Default prompt:**
+<details>
+<summary><strong>Default Prompt Template</strong></summary>
+
 ```
 READ all of {plan} and {progress}. Pick ONE task with passes=false (prefer highest-risk/highest-impact). Keep changes small: one logical change per commit. Update {plan} by setting passes=true and adding notes or steps as needed. Append a brief entry to {progress} with what changed and why. Run feedback loops before committing: bun run typecheck, bun test, bun run lint (if missing, note it in {progress} and continue). Commit change (update {plan} in the same commit). ONLY do one task unless GLARINGLY OBVIOUS steps should run together. Quality bar: production code, maintainable, tests when appropriate. If you learn a critical operational detail, update AGENTS.md. When ALL tasks complete, create .ralph-done and output <promise>COMPLETE</promise>. NEVER GIT PUSH. ONLY COMMIT.
 ```
+
+</details>
+
+---
 
 ## Configuration
 
@@ -139,22 +183,23 @@ Ralph reads configuration from `~/.config/ralph/config.json`:
 
 CLI arguments override config file values.
 
-Ralph supports environment variable overrides:
-- `RALPH_MODEL`: Override model
-- `RALPH_ADAPTER`: Override adapter
-- `RALPH_PLAN`: Override plan file path
-- `RALPH_PROGRESS`: Override progress log path
-- `RALPH_SERVER`: Override OpenCode server URL
+### Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `RALPH_MODEL` | Override model |
+| `RALPH_ADAPTER` | Override adapter |
+| `RALPH_PLAN` | Override plan file path |
+| `RALPH_PROGRESS` | Override progress log path |
+| `RALPH_SERVER` | Override OpenCode server URL |
 
 ### Safety & Reliability
-- **Session Locking**: Prevents multiple Ralph instances from running in the same directory.
-- **Error Backoff**: Retries failed agent iterations with exponential backoff.
-- **Graceful Shutdown**: Double Ctrl+C for force quit, single for confirmed exit.
+
+- **Session Locking** — Prevents multiple Ralph instances from running in the same directory
+- **Error Backoff** — Retries failed agent iterations with exponential backoff
+- **Graceful Shutdown** — Double Ctrl+C for force quit, single for confirmed exit
 
 ### Adapters
-
-
-Ralph supports multiple adapters for running the AI agent:
 
 | Adapter | Description |
 |---------|-------------|
@@ -162,29 +207,7 @@ Ralph supports multiple adapters for running the AI agent:
 | `opencode-run` | Spawns `opencode run` as PTY subprocess |
 | `codex` | Spawns OpenAI Codex CLI as PTY subprocess |
 
-## Workflow Files
-
-| File | Purpose |
-|------|---------|
-| `prd.json` | PRD plan items with `passes` state |
-| `progress.txt` | Progress log appended each iteration |
-| `.ralph-prompt.md` | Prompt template used for loop runs |
-| `.ralph-state.json` | Persisted state for resume after Ctrl+C |
-| `.ralph-lock` | Prevents multiple instances |
-| `.ralph-done` | Agent creates this when all tasks complete |
-| `.ralph-pause` | Created by `p` key to pause loop |
-| `.opencode/plugin/ralph-write-guardrail.ts` | Protects files from AI modification |
-| `AGENTS.md` | Project configuration for AI agents |
-
-**Generated file markers:** Files created by `ralph init` include markers so `ralph --reset` can identify and remove them safely without touching user-created files:
-- `prd.json`: Wrapped with `{ metadata: { generated: true, ... }, items: [...] }`
-- `.ralph-prompt.md`: YAML frontmatter with `generated: true`
-- `progress.txt`: Contains "Initialized via ralph init." marker
-
-Add to `.gitignore`:
-```
-.ralph-*
-```
+---
 
 ## Writing PRDs
 
@@ -224,17 +247,35 @@ Prefer PRD JSON with `passes` flags so Ralph can track scope and progress. Two f
 }
 ```
 
-**Guidelines:**
-- Small, isolated tasks—one commit each
+**Tips:**
+- Small, isolated tasks — one commit each
 - Explicit verification steps
 - Set `passes` to true only when verified
 - 1000+ lines is normal; more detail = fewer hallucinations
+- Legacy markdown checkboxes work too, but `ralph init --from plan.md` is the upgrade path
 
-Legacy markdown checkboxes are still supported, but `ralph init --from plan.md` is the recommended upgrade path.
+---
 
-## Progress Log
+## Workflow Files
 
-Append a short entry each iteration. Example:
+| File | Purpose |
+|------|---------|
+| `prd.json` | PRD plan items with `passes` state |
+| `progress.txt` | Progress log appended each iteration |
+| `.ralph-prompt.md` | Prompt template used for loop runs |
+| `.ralph-state.json` | Persisted state for resume after Ctrl+C |
+| `.ralph-lock` | Prevents multiple instances |
+| `.ralph-done` | Agent creates this when all tasks complete |
+| `.ralph-pause` | Created by `p` key to pause loop |
+| `.opencode/plugin/ralph-write-guardrail.ts` | Protects files from AI modification |
+| `AGENTS.md` | Project configuration for AI agents |
+
+Add to `.gitignore`:
+```
+.ralph-*
+```
+
+### Progress Log Example
 
 ```
 ## Iteration 3 - 2025-01-10T12:34:56Z
@@ -244,7 +285,7 @@ Append a short entry each iteration. Example:
 - Notes: Added retry logic for timeouts
 ```
 
-## AGENTS.md
+### AGENTS.md
 
 Ralph writes operational learnings here. Future iterations read it.
 
@@ -258,6 +299,8 @@ Ralph writes operational learnings here. Future iterations read it.
 - Never import from `solid-js`, use `@opentui/solid`
 ```
 
+---
+
 ## Keybindings
 
 | Key | Action |
@@ -265,7 +308,6 @@ Ralph writes operational learnings here. Future iterations read it.
 | `q` / `Ctrl+C` | Quit (shows confirmation) |
 | `Ctrl+C` (double) | Force quit |
 | `p` | Pause/Resume loop |
-
 | `c` | Open command palette |
 | `:` | Steering mode (send message to agent) |
 | `t` | Launch terminal with attach command |
@@ -279,23 +321,33 @@ Ralph writes operational learnings here. Future iterations read it.
 | `n` | New session (debug mode only) |
 | `Escape` | Close overlay/panel |
 
+---
+
 ## Architecture
 
 ```
 src/
-├── index.ts      # CLI entry, wires TUI to loop
-├── loop.ts       # Main agent loop (prompt → events → commit)
-├── app.tsx       # Solid.js TUI root component
-├── state.ts      # State types and persistence
-├── plan.ts       # PRD + markdown plan parser
-├── git.ts        # Git operations (hash, diff, commits)
-├── lock.ts       # Lock file management
-├── prompt.ts     # User confirmation prompts
-├── components/   # TUI components (header, log, footer)
-└── util/         # Helpers (time formatting, logging)
+├── index.ts          # CLI entry, wires TUI to loop
+├── loop.ts           # Main agent loop (prompt → events → commit)
+├── app.tsx           # Solid.js TUI root component
+├── state.ts          # State types and persistence
+├── plan.ts           # PRD + markdown plan parser
+├── git.ts            # Git operations (hash, diff, commits)
+├── prompt.ts         # User confirmation prompts
+├── adapters/         # Adapter implementations (opencode, codex)
+├── components/       # TUI components (header, log, footer, panels)
+├── context/          # React-style contexts (theme, dialog, toast)
+├── hooks/            # Custom hooks (keyboard, loop state, stats)
+├── lib/              # Core utilities (config, logging, theming, time)
+├── pty/              # PTY subprocess management
+├── templates/        # Init templates (agents, plugins)
+├── types/            # TypeScript type definitions
+└── ui/               # Dialog components
 ```
 
 **Data flow:** `index.ts` starts the TUI (`app.tsx`) and the loop (`loop.ts`) in parallel. The loop sends callbacks to update TUI state. State persists to `.ralph-state.json` for resume capability.
+
+---
 
 ## Testing
 
@@ -313,7 +365,42 @@ tests/
 └── helpers/      # Mock factories, temp file utils
 ```
 
+---
+
 ## Requirements
 
 - [Bun](https://bun.sh) v1.0+
-- [OpenCode](https://opencode.ai) CLI running
+- [OpenCode](https://opencode.ai) CLI running (or alternative adapter)
+
+---
+
+## Contributing
+
+Contributions are welcome! Feel free to submit a Pull Request.
+
+1. Fork the repo
+2. Create your feature branch (`git checkout -b feature/cool-stuff`)
+3. Commit your changes (`git commit -m 'Add cool stuff'`)
+4. Push to the branch (`git push origin feature/cool-stuff`)
+5. Open a Pull Request
+
+---
+
+## Credits
+
+- Thanks to [Geoffrey Huntley](https://ghuntley.com) for the original Ralph Wiggum loop concept
+- openralph is a fork of [`opencode-ralph`](https://github.com/hona/opencode-ralph) — huge thanks to [Hona](https://github.com/hona) for the original implementation
+
+---
+
+## License
+
+MIT License - see [LICENSE](LICENSE) for details.
+
+---
+
+<div align="center">
+
+Made by the ralph development community
+
+</div>
