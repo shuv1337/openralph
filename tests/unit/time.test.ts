@@ -59,10 +59,26 @@ describe("time utilities", () => {
     });
 
     describe("multiple iterations", () => {
-      it("should calculate average and multiply by remaining tasks", () => {
-        // Average of [60000, 120000, 90000] = 90000ms
-        // 90000ms * 4 remaining tasks = 360000ms
-        expect(calculateEta([60000, 120000, 90000], 4)).toBe(360000);
+      it("should use EMA and multiply by remaining tasks", () => {
+        // EMA with alpha=0.3 for [60000, 120000, 90000]:
+        // ema = 60000
+        // ema = 0.3 * 120000 + 0.7 * 60000 = 36000 + 42000 = 78000
+        // ema = 0.3 * 90000 + 0.7 * 78000 = 27000 + 54600 = 81600
+        // 81600 * 4 remaining tasks = 326400ms
+        expect(calculateEta([60000, 120000, 90000], 4)).toBe(326400);
+      });
+
+      it("should incorporate recent iterations into EMA", () => {
+        // EMA smoothly incorporates new values while preserving history
+        // [60000, 90000]: ema = 0.3 * 90000 + 0.7 * 60000 = 69000
+        // [90000, 60000]: ema = 0.3 * 60000 + 0.7 * 90000 = 81000
+        // With alpha=0.3, history (70%) has more weight than recent (30%)
+        const startSlow = calculateEta([90000, 60000], 1); // 81000
+        const startFast = calculateEta([60000, 90000], 1); // 69000
+        expect(startSlow).toBe(81000);
+        expect(startFast).toBe(69000);
+        // Higher initial value results in higher EMA even with faster recent iteration
+        expect(startSlow).toBeGreaterThan(startFast!);
       });
     });
 
