@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { formatDuration, calculateEta, formatEta, formatNumber } from "../../src/util/time";
+import { formatDuration, calculateEta, formatEta, formatNumber } from "../../src/lib/time";
 
 describe("time utilities", () => {
   describe("formatDuration", () => {
