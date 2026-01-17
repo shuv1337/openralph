@@ -29,7 +29,7 @@ import { isWindowsTerminal, isLegacyConsole } from "./lib/windows-console";
 import { useKeyboardReliable } from "./hooks/useKeyboardReliable";
 
 
-import { log } from "./util/log";
+import { log } from "./lib/log";
 import { addSteeringContext, createDebugSession } from "./loop";
 import { createLoopState, type LoopStateStore } from "./hooks/useLoopState";
 import { createLoopStats, type LoopStatsStore } from "./hooks/useLoopStats";

@@ -1,6 +1,9 @@
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'fs';
 import { join } from 'path';
 
+/** Default lock file name used for session locking */
+export const LOCK_FILE = ".ralph-lock";
+
 export interface LockFile {
   pid: number;
   sessionId: string;

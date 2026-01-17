@@ -1,5 +1,5 @@
 import type { PtyProcess, PtyOptions } from "./types";
-import { log } from "../util/log";
+import { log } from "../lib/log";
 
 export function spawnPty(command: string[], options: PtyOptions = {}): PtyProcess {
   const { cols = 80, rows = 24, cwd = process.cwd(), env = {} } = options;

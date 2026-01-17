@@ -3,7 +3,7 @@ import { getAdapter, initializeAdapters } from "./adapters/registry.js";
 import type { LoopOptions, PersistedState, SessionInfo, ToolEvent } from "./state.js";
 import { getHeadHash, getCommitsSince, getDiffStats } from "./git.js";
 import { parsePlan, validatePlanCompletion } from "./plan.js";
-import { log } from "./util/log.js";
+import { log } from "./lib/log";
 
 import { ErrorHandler, ErrorContext } from "./lib/error-handler";
 
