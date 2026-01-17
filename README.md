@@ -93,8 +93,10 @@ ralph init --from plan.md          # convert unstructured plan to PRD JSON
 | `--debug, -d` | `false` | Manual session creation |
 | `--yes` | `false` | Auto-confirm prompts |
 | `--auto-reset` | `true` | Auto-reset when no TTY prompt |
+| `--force` | `false` | Force acquire session lock |
 
 ### Init Subcommand
+
 
 ```bash
 ralph init                    # create template PRD, prompt, plugin, and AGENTS.md
@@ -137,7 +139,20 @@ Ralph reads configuration from `~/.config/ralph/config.json`:
 
 CLI arguments override config file values.
 
+Ralph supports environment variable overrides:
+- `RALPH_MODEL`: Override model
+- `RALPH_ADAPTER`: Override adapter
+- `RALPH_PLAN`: Override plan file path
+- `RALPH_PROGRESS`: Override progress log path
+- `RALPH_SERVER`: Override OpenCode server URL
+
+### Safety & Reliability
+- **Session Locking**: Prevents multiple Ralph instances from running in the same directory.
+- **Error Backoff**: Retries failed agent iterations with exponential backoff.
+- **Graceful Shutdown**: Double Ctrl+C for force quit, single for confirmed exit.
+
 ### Adapters
+
 
 Ralph supports multiple adapters for running the AI agent:
 
@@ -247,8 +262,10 @@ Ralph writes operational learnings here. Future iterations read it.
 
 | Key | Action |
 |-----|--------|
-| `q` / `Ctrl+C` | Quit |
+| `q` / `Ctrl+C` | Quit (shows confirmation) |
+| `Ctrl+C` (double) | Force quit |
 | `p` | Pause/Resume loop |
+
 | `c` | Open command palette |
 | `:` | Steering mode (send message to agent) |
 | `t` | Launch terminal with attach command |
