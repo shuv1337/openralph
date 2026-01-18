@@ -23,9 +23,11 @@ import { detectInstalledTerminals, launchTerminal, getAttachCommand as getAttach
 import { copyToClipboard, detectClipboardTool } from "./lib/clipboard";
 import { loadConfig, setPreferredTerminal, getAllFallbackAgents, setFallbackAgent, removeFallbackAgent, updateConfig } from "./lib/config";
 
-import { parsePlan, parsePlanTasks, type Task } from "./plan";
+import { parsePlan, parsePlanTasks, savePlanTasks, type Task } from "./plan";
 import { layout } from "./components/tui-theme";
 import type { DetailsViewMode, UiTask } from "./components/tui-types";
+import type { TaskStatus } from "./types/task-status";
+
 import { isWindowsTerminal, isLegacyConsole } from "./lib/windows-console";
 import { useKeyboardReliable } from "./hooks/useKeyboardReliable";
 
@@ -267,6 +269,10 @@ export function App(props: AppProps) {
   // Whether to show completed tasks in the task list (default: false for optimization)
   const [showCompletedTasks, setShowCompletedTasks] = createSignal(false);
 
+  // Staged task status changes (taskId -> status)
+  const [stagedTaskStatuses, setStagedTaskStatuses] = createSignal<Record<string, TaskStatus>>({});
+
+
   // Function to refresh tasks from plan file
   const refreshTasks = async () => {
     if (!props.options.planFile) {
@@ -414,11 +420,15 @@ export function App(props: AppProps) {
               setKeyboardEventNotified={setKeyboardEventNotified}
               showTasks={showTasks}
               setShowTasks={setShowTasks}
-              tasks={tasks}
-              showCompletedTasks={showCompletedTasks}
-              setShowCompletedTasks={setShowCompletedTasks}
-              loopStore={loopStore}
-              loopStats={loopStats}
+               tasks={tasks}
+               showCompletedTasks={showCompletedTasks}
+               setShowCompletedTasks={setShowCompletedTasks}
+               stagedTaskStatuses={stagedTaskStatuses}
+               setStagedTaskStatuses={setStagedTaskStatuses}
+               refreshTasks={refreshTasks}
+               loopStore={loopStore}
+               loopStats={loopStats}
+
               interruptHandler={props.interruptHandler}
             />
           </CommandProvider>
@@ -450,7 +460,11 @@ type AppContentProps = {
   tasks: () => Task[];
   showCompletedTasks: () => boolean;
   setShowCompletedTasks: (v: boolean) => void;
+  stagedTaskStatuses: Accessor<Record<string, TaskStatus>>;
+  setStagedTaskStatuses: Setter<Record<string, TaskStatus>>;
+  refreshTasks: () => Promise<void>;
   // Hook-based state stores (for gradual migration)
+
   loopStore: LoopStateStore;
   loopStats: LoopStatsStore;
   interruptHandler?: InterruptHandler;
@@ -574,6 +588,51 @@ function AppContent(props: AppContentProps) {
   });
   
   const [selectedTaskIndex, setSelectedTaskIndex] = createSignal(0);
+
+  /**
+   * Wrapper for togglePause that applies staged task status changes first.
+   * This implements the deferred execution model for manual task overrides.
+   */
+  const handleTogglePause = async () => {
+    // Apply staged task status changes before resuming if any
+    const staged = props.stagedTaskStatuses();
+    if (Object.keys(staged).length > 0) {
+      log("app", "Applying staged task status changes before resume/start", { count: Object.keys(staged).length });
+      
+      const updatedTasks = props.tasks().map(task => {
+        const stagedStatus = staged[task.id];
+        if (stagedStatus) {
+          return {
+            ...task,
+            done: stagedStatus === "done",
+            status: stagedStatus
+          };
+        }
+        return task;
+      });
+      
+      try {
+        await savePlanTasks(props.options.planFile, updatedTasks);
+        props.setStagedTaskStatuses({}); // Clear staged changes after persistence
+        toast.show({
+          variant: "success",
+          message: "Saved staged task changes",
+        });
+        // Trigger a task refresh to ensure everything is in sync
+        await props.refreshTasks();
+      } catch (err) {
+        log("app", "Failed to save staged task changes", { error: String(err) });
+        toast.show({
+          variant: "error",
+          message: "Failed to save task changes",
+        });
+        return; // Don't proceed to toggle pause if save failed
+      }
+    }
+    
+    await props.togglePause();
+  };
+
   const [detailsViewMode, setDetailsViewMode] = createSignal<DetailsViewMode>("output");
   const [showHelp, setShowHelp] = createSignal(false);
   const [showDashboard, setShowDashboard] = createSignal(false);
@@ -585,14 +644,19 @@ function AppContent(props: AppContentProps) {
 
   // All tasks converted to UiTask format
   const allUiTasks = createMemo<UiTask[]>(() =>
-    props.tasks().map((task) => ({
-      id: task.id,
-      title: task.text,
-      status: task.done ? "done" : "actionable",
-      line: task.line,
-      priority: task.priority,
-      category: task.category,
-    }))
+    props.tasks().map((task) => {
+      const stagedStatus = props.stagedTaskStatuses()[task.id];
+      const status = stagedStatus || (task.done ? "done" : "actionable");
+      
+      return {
+        id: task.id,
+        title: task.text,
+        status: status as TaskStatus,
+        line: task.line,
+        priority: task.priority,
+        category: task.category,
+      };
+    })
   );
 
 
@@ -788,11 +852,12 @@ function AppContent(props: AppContentProps) {
           description,
           keybind: keymap.togglePause.label,
           onSelect: () => {
-            props.togglePause();
+            handleTogglePause();
           },
         },
       ];
     });
+
 
     // Register "Copy attach command" action
     command.register("copyAttach", () => [
@@ -1496,6 +1561,32 @@ function AppContent(props: AppContentProps) {
       return;
     }
 
+    // X key: toggle status of selected task (deferred execution)
+    if (matchesKeybind(e, keymap.toggleTaskStatus) && props.showTasks()) {
+      const selected = selectedTask();
+      if (selected) {
+        log("app", "Toggling status for task", { id: selected.id, currentStatus: selected.status });
+        
+        const nextStatus = (current: TaskStatus): TaskStatus => {
+          if (current === "pending") return "actionable";
+          if (current === "actionable") return "done";
+          return "pending";
+        };
+
+        const newStatus = nextStatus(selected.status);
+        props.setStagedTaskStatuses(prev => ({
+          ...prev,
+          [selected.id]: newStatus
+        }));
+        
+        toast.show({
+          variant: "info",
+          message: `Staged status for ${selected.id}: ${newStatus}`,
+        });
+      }
+      return;
+    }
+
     // c: open command palette
     if (matchesKeybind(e, keymap.commandPalette)) {
       log("app", "Command palette opened via 'c' key");
@@ -1524,9 +1615,10 @@ function AppContent(props: AppContentProps) {
         return;
       }
       // In normal mode, p toggles pause
-      props.togglePause();
+      handleTogglePause();
       return;
     }
+
 
     // t key: launch terminal with attach command (only when no modifiers)
     if (matchesKeybind(e, keymap.terminalConfig)) {
