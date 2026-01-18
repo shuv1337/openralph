@@ -967,28 +967,29 @@ async function main() {
           ...prev,
           status: "running",
           iteration,
+          // Clear any lingering spinners from previous (possibly failed) iterations
+          events: prev.events.filter(e => e.type !== "spinner")
         }));
       },
       onEvent: (event) => {
-        // Debounce event updates to batch rapid events within 50ms window
-        // Mutate existing array in-place to avoid allocations
+        // Debounce event updates to batch rapid events within window
         batchedUpdater.queueUpdate((prev) => {
-          const spinnerIndex = prev.events.findIndex((e) => e.type === "spinner");
-          const existingSpinner = spinnerIndex !== -1 ? prev.events[spinnerIndex] : undefined;
-          const eventsWithoutSpinner = prev.events.filter((e) => e.type !== "spinner");
-
-          let nextSpinner = existingSpinner;
+          // If it's a spinner, we only keep the latest one across the entire log
           if (event.type === "spinner") {
-            nextSpinner = event;
-          } else {
-            eventsWithoutSpinner.push(event);
+            const filtered = prev.events.filter(e => e.type !== "spinner");
+            return { events: trimEvents([...filtered, event]) };
           }
-
-          if (nextSpinner) {
-            eventsWithoutSpinner.push(nextSpinner);
+          
+          // For other events, we append them but ensure the spinner (if any) stays at the very end
+          const spinner = prev.events.find(e => e.type === "spinner");
+          const others = prev.events.filter(e => e.type !== "spinner");
+          others.push(event);
+          
+          if (spinner) {
+            others.push(spinner);
           }
-
-          return { events: trimEvents(eventsWithoutSpinner) };
+          
+          return { events: trimEvents(others) };
         });
       },
       onRawOutput: (data) => {
