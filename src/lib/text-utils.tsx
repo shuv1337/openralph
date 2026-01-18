@@ -7,7 +7,7 @@ import { parseMarkdownSegments } from "./markdown";
 import { stripAnsiCodes, type FormattedSegment } from "./ansi";
 
 // Re-export pure functions for convenience
-export { parseMarkdownSegments, stripMarkdownBold, hasMarkdownBold } from "./markdown";
+export { parseMarkdownSegments, stripMarkdownBold, hasMarkdownBold, stripMarkdownLinks } from "./markdown";
 export { stripAnsiCodes, hasAnsiCodes, sanitizeForDisplay, parseToSegments } from "./ansi";
 export type { FormattedSegment } from "./ansi";
 export type { TextSegment } from "./markdown";

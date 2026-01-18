@@ -68,6 +68,16 @@ export function parseMarkdownSegments(text: string): TextSegment[] {
 }
 
 /**
+ * Strip markdown links [text](url) from text, returning just the text.
+ * 
+ * @param text - The text with potential markdown links
+ * @returns Text with links stripped to just their label
+ */
+export function stripMarkdownLinks(text: string): string {
+  return text.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
+}
+
+/**
  * Strip **bold** markers from text, returning display text.
  * [tags] are kept as-is since they display with brackets.
  * 
@@ -75,7 +85,9 @@ export function parseMarkdownSegments(text: string): TextSegment[] {
  * @returns Text with ** markers removed but [tags] kept
  */
 export function stripMarkdownBold(text: string): string {
-  return text.replace(/\*\*([^*]+)\*\*/g, "$1");
+  // Strip links first to avoid conflicting with bold markers inside links (though rare)
+  const noLinks = stripMarkdownLinks(text);
+  return noLinks.replace(/\*\*([^*]+)\*\*/g, "$1");
 }
 
 /**
