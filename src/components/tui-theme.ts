@@ -85,8 +85,8 @@ export const layout = {
     height: 6,
   },
   leftPanel: {
-    minWidth: 30,
-    maxWidth: 50,
+    minWidth: 50,
+    maxWidth: 70,
     defaultWidthPercent: 35,
   },
   rightPanel: {
