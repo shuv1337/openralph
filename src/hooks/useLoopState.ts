@@ -1,5 +1,7 @@
 import { createSignal, type Accessor } from "solid-js";
 import type { LoopState, ToolEvent, TokenUsage } from "../state";
+import type { SandboxConfig, RateLimitState, ActiveAgentState } from "../components/tui-types";
+
 
 /**
  * Loop status values representing the current state of the automation loop.
@@ -29,7 +31,12 @@ export type LoopAction =
   | { type: "SET_BACKOFF"; backoffMs: number; retryAt: number }
   | { type: "CLEAR_BACKOFF" }
   | { type: "SET_TOKENS"; tokens: TokenUsage }
-  | { type: "RESET_TOKENS" };
+  | { type: "RESET_TOKENS" }
+  | { type: "SET_MODEL"; model: string }
+  | { type: "SET_SANDBOX"; sandbox: SandboxConfig }
+  | { type: "SET_RATE_LIMIT"; state: RateLimitState }
+  | { type: "CLEAR_RATE_LIMIT" }
+  | { type: "SET_ACTIVE_AGENT"; state: ActiveAgentState };
 
 /**
  * Initial state for the loop.
@@ -151,6 +158,21 @@ export function loopStateReducer(state: LoopState, action: LoopAction): LoopStat
 
     case "RESET_TOKENS":
       return { ...state, tokens: undefined };
+
+    case "SET_MODEL":
+      return { ...state, currentModel: action.model };
+
+    case "SET_SANDBOX":
+      return { ...state, sandboxConfig: action.sandbox };
+    
+    case "SET_RATE_LIMIT":
+      return { ...state, rateLimitState: action.state };
+    
+    case "CLEAR_RATE_LIMIT":
+      return { ...state, rateLimitState: undefined };
+    
+    case "SET_ACTIVE_AGENT":
+      return { ...state, activeAgentState: action.state };
 
     default:
       return state;

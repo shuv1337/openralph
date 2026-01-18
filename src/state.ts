@@ -1,3 +1,6 @@
+import type { ErrorHandlingConfig, SessionConfig, UIConfig } from './lib/config/schema';
+import type { SandboxConfig, ActiveAgentState, RateLimitState } from './components/tui-types';
+
 export type PersistedState = {
   startTime: number; // When run started (epoch ms)
   initialCommitHash: string; // HEAD at start
@@ -40,6 +43,14 @@ export type LoopState = {
   errorRetryAt?: number; // Timestamp (epoch ms) when next retry will occur (undefined when no backoff active)
   // Token usage for display in footer
   tokens?: TokenUsage;
+  /** Current model being used */
+  currentModel?: string;
+  /** Current sandbox configuration */
+  sandboxConfig?: SandboxConfig;
+  /** Active agent state for header display */
+  activeAgentState?: ActiveAgentState;
+  /** Rate limit state for fallback display */
+  rateLimitState?: RateLimitState;
 };
 
 export type ToolEvent = {
@@ -91,8 +102,6 @@ export async function saveState(state: PersistedState): Promise<void> {
   await Bun.write(STATE_FILE, JSON.stringify(state, null, 2));
 }
 
-import type { ErrorHandlingConfig, SessionConfig, UIConfig } from './lib/config/schema';
-
 export type LoopOptions = {
   planFile: string;
   progressFile?: string;
@@ -107,6 +116,7 @@ export type LoopOptions = {
   errorHandling?: ErrorHandlingConfig;
   session?: SessionConfig;
   ui?: UIConfig;
+  fallbackAgents?: Record<string, string>;
 };
 
 

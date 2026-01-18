@@ -408,6 +408,11 @@ async function main() {
       description: "Force acquire session lock",
       default: false,
     })
+    .option("fallback-agent", {
+      type: "array",
+      string: true,
+      description: "Fallback agent mapping (format: primary:fallback)",
+    })
     .help("h")
     .alias("h", "help")
     .version(version)
@@ -580,6 +585,18 @@ async function main() {
       errorHandling: config.errorHandling,
       session: config.session,
       ui: config.ui,
+      fallbackAgents: (() => {
+        const fallbacks = { ...config.fallbackAgents };
+        if (argv["fallback-agent"]) {
+          for (const mapping of argv["fallback-agent"] as string[]) {
+            const [primary, fallback] = mapping.split(":");
+            if (primary && fallback) {
+              fallbacks[primary.trim()] = fallback.trim();
+            }
+          }
+        }
+        return fallbacks;
+      })(),
     };
 
 
@@ -1191,6 +1208,34 @@ async function main() {
           }, 150);
         };
       })(),
+      onModel: (model) => {
+        log("main", "onModel", { model });
+        stateSetters.setState((prev) => ({
+          ...prev,
+          currentModel: model,
+        }));
+      },
+      onSandbox: (sandbox) => {
+        log("main", "onSandbox", sandbox);
+        stateSetters.setState((prev) => ({
+          ...prev,
+          sandboxConfig: sandbox,
+        }));
+      },
+      onRateLimit: (rateLimitState) => {
+        log("main", "onRateLimit", rateLimitState);
+        stateSetters.setState((prev) => ({
+          ...prev,
+          rateLimitState,
+        }));
+      },
+      onActiveAgent: (activeAgentState) => {
+        log("main", "onActiveAgent", activeAgentState);
+        stateSetters.setState((prev) => ({
+          ...prev,
+          activeAgentState,
+        }));
+      },
     }, abortController.signal).catch((error) => {
       log("main", "Loop error", { error: error instanceof Error ? error.message : String(error) });
       console.error("Loop error:", error);
