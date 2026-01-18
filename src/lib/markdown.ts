@@ -87,7 +87,7 @@ export function stripMarkdownLinks(text: string): string {
 export function stripMarkdownBold(text: string): string {
   // Strip links first to avoid conflicting with bold markers inside links (though rare)
   const noLinks = stripMarkdownLinks(text);
-  return noLinks.replace(/\*\*([^*]+)\*\*/g, "$1");
+  return noLinks.replace(/\*\*([^\*]+)\*\*/g, "$1");
 }
 
 /**
@@ -97,7 +97,7 @@ export function stripMarkdownBold(text: string): string {
  * @returns True if text contains **bold** patterns
  */
 export function hasMarkdownBold(text: string): boolean {
-  return /\*\*([^*]+)\*\*/.test(text);
+  return /\*\*([^\*]+)\*\*/.test(text);
 }
 
 /**
