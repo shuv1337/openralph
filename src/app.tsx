@@ -800,7 +800,6 @@ function AppContent(props: AppContentProps) {
           title: "Copy attach command",
           value: "copyAttach",
           description: "Copy attach command to clipboard",
-          keybind: keymap.copyAttach.label,
           disabled: !props.state().sessionId || props.state().adapterMode === "pty",
           onSelect: () => {
             copyAttachCommand();
@@ -841,7 +840,6 @@ function AppContent(props: AppContentProps) {
         title: props.showCompletedTasks() ? "Hide completed tasks" : "Show completed tasks",
         value: "toggleCompletedTasks",
         description: "Show/hide completed tasks in the task list",
-        keybind: keymap.toggleCompleted.label,
         onSelect: () => {
           log("app", "Completed tasks toggled via command palette", { showCompleted: !props.showCompletedTasks() });
           props.setShowCompletedTasks(!props.showCompletedTasks());
@@ -1495,13 +1493,6 @@ function AppContent(props: AppContentProps) {
 
     if (props.showTasks() && (key === "pagedown")) {
       setSelectedTaskIndex((prev) => Math.min(uiTasks().length - 1, prev + 10));
-      return;
-    }
-
-    // Shift+C: toggle completed tasks visibility (check before plain C)
-    if (matchesKeybind(e, keymap.toggleCompleted)) {
-      log("app", "Completed tasks toggled via Shift+C", { showCompleted: !props.showCompletedTasks() });
-      props.setShowCompletedTasks(!props.showCompletedTasks());
       return;
     }
 
