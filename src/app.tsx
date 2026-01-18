@@ -15,6 +15,7 @@ import { ToastProvider, useToast } from "./context/ToastContext";
 import { ThemeProvider, useTheme } from "./context/ThemeContext";
 import { ToastStack } from "./components/toast";
 import { DialogSelect, type SelectOption } from "./ui/DialogSelect";
+import { EnhancedCommandPalette } from "./components/enhanced-command-palette";
 import { DialogAlert } from "./ui/DialogAlert";
 import { DialogPrompt } from "./ui/DialogPrompt";
 import { keymap, matchesKeybind } from "./lib/keymap";
@@ -692,11 +693,14 @@ function AppContent(props: AppContentProps) {
     }
   });
 
+  /* Removed forcing output mode in PTY to allow viewing details/prompt */
+  /*
   createEffect(() => {
     if (props.state().adapterMode === "pty" && detailsViewMode() === "details") {
       setDetailsViewMode("output");
     }
   });
+  */
 
   const isCompact = createMemo(() => terminalDimensions().width < 80);
 
@@ -1432,7 +1436,7 @@ function AppContent(props: AppContentProps) {
     }));
 
     dialog.show(() => (
-      <DialogSelect
+      <EnhancedCommandPalette
         title="Command Palette"
         placeholder="Type to search commands..."
         options={options}
@@ -1521,10 +1525,15 @@ function AppContent(props: AppContentProps) {
     }
 
     if (key === "o" && !e.ctrl && !e.meta) {
+      log("app", "Toggle view mode command received", { current: detailsViewMode() });
       setDetailsViewMode((mode) => {
-        if (mode === "details") return "output";
-        if (mode === "output") return "prompt";
-        return "details";
+        let next: DetailsViewMode = "details";
+        if (mode === "details") next = "output";
+        else if (mode === "output") next = "prompt";
+        else next = "details";
+        
+        log("app", "View mode transition", { from: mode, to: next });
+        return next;
       });
       return;
     }
