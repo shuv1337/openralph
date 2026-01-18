@@ -1,10 +1,30 @@
+import type { JSX } from "solid-js";
 import { For, Match, Show, Switch, createEffect, createMemo, createSignal, onCleanup } from "solid-js";
 import { TOOL_ICONS } from "../lib/theme-colors";
 import { formatDuration } from "../lib/time";
-import { renderMarkdownBold } from "../lib/text-utils";
+import { renderMarkdownBold, stripAnsiCodes, type FormattedSegment } from "../lib/text-utils";
 import type { ToolEvent } from "../state";
 import { useTheme } from "../context/ThemeContext";
 import type { Theme } from "../lib/theme-resolver";
+
+/**
+ * Render a line with tool name highlighting using OpenTUI span style.
+ * Pattern: [toolname] content → green tool name, white content
+ * 
+ * Verified pattern: <span style={{ fg: color }}>text</span>
+ */
+function renderLineWithHighlighting(line: string, theme: Theme): JSX.Element {
+  const toolMatch = line.match(/^(\[[\w-]+\])(.*)/);
+  if (toolMatch) {
+    return (
+      <text>
+        <span style={{ fg: theme.success, bold: true }}>{toolMatch[1]}</span>
+        <span style={{ fg: theme.text }}>{toolMatch[2]}</span>
+      </text>
+    );
+  }
+  return <text fg={theme.text}>{line}</text>;
+}
 
 /**
  * Truncate text to fit within a maximum length, adding ellipsis if needed.
@@ -206,13 +226,21 @@ function ToolEventItem(props: { event: ToolEvent; theme: Theme }) {
   // Truncate text and detail to fit on one line
   const truncatedText = createMemo(() => {
     const maxTextWidth = Math.floor(availableWidth() * 0.6); // 60% for main text
-    return truncateText(props.event.text, maxTextWidth);
+    const sanitized = stripAnsiCodes(props.event.text);
+    return truncateText(sanitized, maxTextWidth);
   });
   
   const truncatedDetail = createMemo(() => {
     if (!props.event.detail) return undefined;
     const maxDetailWidth = Math.floor(availableWidth() * 0.4) - 1; // 40% for detail, minus space
-    return truncateText(props.event.detail, maxDetailWidth);
+    const sanitized = stripAnsiCodes(props.event.detail);
+    return truncateText(sanitized, maxDetailWidth);
+  });
+
+  const parsedDetail = createMemo(() => {
+    const detail = truncatedDetail();
+    if (!detail) return undefined;
+    return renderLineWithHighlighting(detail, props.theme);
   });
 
   // Parse markdown bold in the main text
@@ -225,8 +253,9 @@ function ToolEventItem(props: { event: ToolEvent; theme: Theme }) {
       <text fg={isVerbose() ? props.theme.textMuted : iconColor()}>{icon()}</text>
       <text fg={textColor()}> </text>
       {parsedText()}
-      <Show when={truncatedDetail()}>
-        <text fg={props.theme.textMuted}> {truncatedDetail()}</text>
+      <Show when={parsedDetail()}>
+        <text fg={props.theme.textMuted}> </text>
+        {parsedDetail()}
       </Show>
     </box>
   );
@@ -248,7 +277,11 @@ function ReasoningEventItem(props: { event: ToolEvent; theme: Theme }) {
     return Math.max(20, termWidth - 5); // Reserve 5 chars for icon + space + margin
   });
   
-  const truncatedText = createMemo(() => truncateText(props.event.text, availableWidth()));
+  const truncatedText = createMemo(() => {
+    const sanitized = stripAnsiCodes(props.event.text);
+    return truncateText(sanitized, availableWidth());
+  });
+
 
   return (
     <box width="100%" flexDirection="row">
