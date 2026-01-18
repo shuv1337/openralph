@@ -7,7 +7,7 @@ import {
   JSX,
 } from "solid-js";
 import type { Accessor } from "solid-js";
-import { log } from "../util/log";
+import { log } from "../lib/log";
 
 /**
  * Type for a dialog component that can be rendered in the stack.

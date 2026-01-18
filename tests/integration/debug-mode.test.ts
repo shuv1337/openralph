@@ -37,14 +37,14 @@ describe("debug mode", () => {
   // Store original fetch to restore later
   let originalFetch: typeof fetch;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     originalFetch = globalThis.fetch;
     // Reset mocks
     mockSessionCreate.mockClear();
     mockSessionPrompt.mockClear();
     mockCreateOpencodeServer.mockClear();
     // Clean up any cached debug server/client state
-    cleanupDebugSession();
+    await cleanupDebugSession();
   });
 
   afterEach(async () => {
@@ -53,7 +53,7 @@ describe("debug mode", () => {
     // Clean up ralph-specific files
     await cleanupRalphFiles();
     // Clean up debug session resources
-    cleanupDebugSession();
+    await cleanupDebugSession();
   });
 
   describe("createDebugSession", () => {
@@ -261,7 +261,7 @@ describe("debug mode", () => {
       expect(mockCreateOpencodeServer).toHaveBeenCalledTimes(1);
 
       // Cleanup
-      cleanupDebugSession();
+      await cleanupDebugSession();
 
       // Create another session - server should be created again
       mockCreateOpencodeServer.mockClear();
@@ -273,10 +273,10 @@ describe("debug mode", () => {
       expect(mockCreateOpencodeServer).toHaveBeenCalledTimes(1);
     });
 
-    it("should be safe to call multiple times", () => {
+    it("should be safe to call multiple times", async () => {
       // Should not throw even if nothing to clean up
-      expect(() => cleanupDebugSession()).not.toThrow();
-      expect(() => cleanupDebugSession()).not.toThrow();
+      await expect(cleanupDebugSession()).resolves.toBeUndefined();
+      await expect(cleanupDebugSession()).resolves.toBeUndefined();
     });
   });
 

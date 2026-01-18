@@ -20,21 +20,39 @@ export function formatDuration(ms: number): string {
 }
 
 /**
- * Calculate estimated time remaining based on iteration times.
+ * Calculate estimated time remaining based on iteration times using Exponential Moving Average.
+ * EMA provides better estimates by weighting recent iterations more heavily while still
+ * considering historical performance, adapting to changing task complexity.
+ * 
  * @param iterationTimes - Array of past iteration durations in milliseconds
  * @param remainingTasks - Number of tasks remaining
+ * @param alpha - Smoothing factor (0.3 = 30% weight on recent value, 70% on history).
+ *                Higher alpha = more responsive to recent changes but less stable.
+ *                Lower alpha = more stable but slower to adapt.
  * @returns Estimated time in milliseconds, or null if no data available
  */
 export function calculateEta(
   iterationTimes: number[],
   remainingTasks: number,
+  alpha: number = 0.3,
 ): number | null {
   if (iterationTimes.length === 0) {
     return null;
   }
-  const sum = iterationTimes.reduce((acc, time) => acc + time, 0);
-  const average = sum / iterationTimes.length;
-  return average * remainingTasks;
+  
+  // Single iteration: use it directly
+  if (iterationTimes.length === 1) {
+    return iterationTimes[0] * remainingTasks;
+  }
+  
+  // Calculate EMA: EMA_new = α * value + (1 - α) * EMA_old
+  // Initialize with first value, then apply formula iteratively
+  let ema = iterationTimes[0];
+  for (let i = 1; i < iterationTimes.length; i++) {
+    ema = alpha * iterationTimes[i] + (1 - alpha) * ema;
+  }
+  
+  return ema * remainingTasks;
 }
 
 /**

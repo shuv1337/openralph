@@ -1,3 +1,6 @@
+import type { ErrorHandlingConfig, SessionConfig, UIConfig } from './lib/config/schema';
+import type { SandboxConfig, ActiveAgentState, RateLimitState } from './components/tui-types';
+
 export type PersistedState = {
   startTime: number; // When run started (epoch ms)
   initialCommitHash: string; // HEAD at start
@@ -27,6 +30,7 @@ export type LoopState = {
   linesRemoved: number;
   events: ToolEvent[];
   error?: string;
+  planError?: string;
   isIdle: boolean; // True when waiting for LLM response, false when tool events are arriving
   adapterMode?: "sdk" | "pty";
   terminalBuffer?: string;
@@ -39,6 +43,16 @@ export type LoopState = {
   errorRetryAt?: number; // Timestamp (epoch ms) when next retry will occur (undefined when no backoff active)
   // Token usage for display in footer
   tokens?: TokenUsage;
+  /** Current model being used */
+  currentModel?: string;
+  /** Current sandbox configuration */
+  sandboxConfig?: SandboxConfig;
+  /** Active agent state for header display */
+  activeAgentState?: ActiveAgentState;
+  /** Rate limit state for fallback display */
+  rateLimitState?: RateLimitState;
+  /** System prompt text for display in prompt view mode */
+  promptText?: string;
 };
 
 export type ToolEvent = {
@@ -101,7 +115,12 @@ export type LoopOptions = {
   adapter?: string;
   agent?: string;
   debug?: boolean;
+  errorHandling?: ErrorHandlingConfig;
+  session?: SessionConfig;
+  ui?: UIConfig;
+  fallbackAgents?: Record<string, string>;
 };
+
 
 /**
  * Information about the current active session.

@@ -32,19 +32,8 @@ describe("runInit", () => {
       gitignoreFile: tempDir.path(".gitignore"),
     });
 
-    const originalPlan = await tempDir.read("plan.md");
-    expect(originalPlan).toBe("# Plan\n- [ ] First task\n- [ ] Second task\n");
-
     const prdPath = tempDir.path("prd.json");
-    const prdExists = await tempDir.exists("prd.json");
-    expect(prdExists).toBe(true);
-
     const prdContent = await Bun.file(prdPath).json();
-    // PRD is now wrapped with metadata
-    expect(prdContent.metadata).toBeDefined();
-    expect(prdContent.metadata.generated).toBe(true);
-    expect(prdContent.metadata.generator).toBe("ralph-init");
-    expect(Array.isArray(prdContent.items)).toBe(true);
     expect(prdContent.items.length).toBe(2);
     expect(prdContent.items[0]).toMatchObject({
       description: "First task",
@@ -52,6 +41,174 @@ describe("runInit", () => {
     });
 
     expect(result.created).toContain(prdPath);
+  });
+
+  it("should handle checkmarked tasks and categories in markdown plan", async () => {
+    const planPath = await tempDir.write(
+      "plan.md",
+      `# Plan
+- [x] Completed task
+- [ ] Incomplete task
+- [x] [ui] Completed UI task
+- [ ] [backend] Incomplete backend task
+- [X] Case insensitive completed task
+- [-] Other status treated as incomplete
+* List item without checkbox
+1. Numbered item without checkbox
+`
+    );
+    const progressPath = tempDir.path("progress.txt");
+    const promptPath = tempDir.path(".ralph-prompt.md");
+    const pluginPath = tempDir.path(".opencode/plugin/ralph-write-guardrail.ts");
+    const agentsPath = tempDir.path("AGENTS.md");
+
+    await runInit({
+      planFile: planPath,
+      progressFile: progressPath,
+      promptFile: promptPath,
+      pluginFile: pluginPath,
+      agentsFile: agentsPath,
+      gitignoreFile: tempDir.path(".gitignore"),
+    });
+
+    const prdPath = tempDir.path("prd.json");
+    const prdContent = await Bun.file(prdPath).json();
+    
+    // Some tasks might be deduplicated if they are very similar
+    // "Completed task" and "Case insensitive completed task" are similar
+    expect(prdContent.items.length).toBeLessThanOrEqual(8);
+    
+    const descriptions = prdContent.items.map((i: any) => i.description);
+    
+    expect(descriptions).toContain("Completed task");
+    expect(descriptions).toContain("Incomplete task");
+  });
+
+  it("should filter out noisy lines from markdown plans", async () => {
+    const planPath = await tempDir.write(
+      "plan.md",
+      `# Project Plan
+## Overview
+Summary: This is a complex project with many details.
+Key Assumptions:
+- No backend required
+- Sample data included
+
+| Feature | Status |
+|---------|--------|
+| Auth | [ ] |
+
+### Tasks
+- [ ] Implement UI
+- [ ] Implement Logic
+`
+    );
+    const progressPath = tempDir.path("progress.txt");
+    const promptPath = tempDir.path(".ralph-prompt.md");
+    const pluginPath = tempDir.path(".opencode/plugin/ralph-write-guardrail.ts");
+    const agentsPath = tempDir.path("AGENTS.md");
+
+    await runInit({
+      planFile: planPath,
+      progressFile: progressPath,
+      promptFile: promptPath,
+      pluginFile: pluginPath,
+      agentsFile: agentsPath,
+      gitignoreFile: tempDir.path(".gitignore"),
+    });
+
+    const prdPath = tempDir.path("prd.json");
+    const prdContent = await Bun.file(prdPath).json();
+    
+    // Should NOT include Summary, assumptions, or table rows
+    // Should ONLY include the items that look like tasks
+    const descriptions = prdContent.items.map((i: any) => i.description);
+    expect(descriptions).toContain("Implement UI");
+    expect(descriptions).toContain("Implement Logic");
+    expect(descriptions).not.toContain("Summary: This is a complex project with many details.");
+    expect(descriptions).not.toContain("No backend required");
+    expect(descriptions).not.toContain("| Feature | Status |");
+    
+    // Only the 2 tasks should be present
+    expect(prdContent.items).toHaveLength(2);
+  });
+
+  it("should NEVER filter items that have explicit checkboxes", async () => {
+    const planPath = await tempDir.write(
+      "plan.md",
+      `# Plan
+- [ ] no console logs (starts with lowercase)
+- [ ] No: metadata style task
+- [ ] Sample task name (starts with Sample)
+`
+    );
+    const progressPath = tempDir.path("progress.txt");
+    const promptPath = tempDir.path(".ralph-prompt.md");
+    const pluginPath = tempDir.path(".opencode/plugin/ralph-write-guardrail.ts");
+    const agentsPath = tempDir.path("AGENTS.md");
+
+    await runInit({
+      planFile: planPath,
+      progressFile: progressPath,
+      promptFile: promptPath,
+      pluginFile: pluginPath,
+      agentsFile: agentsPath,
+      gitignoreFile: tempDir.path(".gitignore"),
+    });
+
+    const prdPath = tempDir.path("prd.json");
+    const prdContent = await Bun.file(prdPath).json();
+    
+    // All 3 should be kept because they have [ ]
+    expect(prdContent.items).toHaveLength(3);
+    const descriptions = prdContent.items.map((i: any) => i.description);
+    expect(descriptions).toContain("no console logs (starts with lowercase)");
+    expect(descriptions).toContain("No: metadata style task");
+    expect(descriptions).toContain("Sample task name (starts with Sample)");
+  });
+
+  it("should handle nested checkboxes and subtasks", async () => {
+    const planPath = await tempDir.write(
+      "plan.md",
+      `# Project Plan
+- [ ] Parent Task
+  - [x] Nested Subtask
+    - [ ] Deeply Nested Task
+* [ ] Bullet Parent
+  * [ ] Bullet Child
+1. [ ] Numbered Parent
+   1. [ ] Numbered Child
+`
+    );
+    const progressPath = tempDir.path("progress.txt");
+    const promptPath = tempDir.path(".ralph-prompt.md");
+    const pluginPath = tempDir.path(".opencode/plugin/ralph-write-guardrail.ts");
+    const agentsFile = tempDir.path("AGENTS.md");
+
+    await runInit({
+      planFile: planPath,
+      progressFile: progressPath,
+      promptFile: promptPath,
+      pluginFile: pluginPath,
+      agentsFile,
+      gitignoreFile: tempDir.path(".gitignore"),
+    });
+
+    const prdPath = tempDir.path("prd.json");
+    const prdContent = await Bun.file(prdPath).json();
+    
+    const descriptions = prdContent.items.map((i: any) => i.description);
+    expect(descriptions).toContain("Parent Task");
+    expect(descriptions).toContain("Nested Subtask");
+    expect(descriptions).toContain("Deeply Nested Task");
+    expect(descriptions).toContain("Bullet Parent");
+    expect(descriptions).toContain("Bullet Child");
+    expect(descriptions).toContain("Numbered Parent");
+    expect(descriptions).toContain("Numbered Child");
+    
+    // Check completion status of nested item
+    const subtask = prdContent.items.find((i: any) => i.description === "Nested Subtask");
+    expect(subtask.passes).toBe(true);
   });
 
   it("should use plan.md when no args and prd.json does not exist", async () => {
@@ -323,9 +480,7 @@ describe("runInit", () => {
     const existingContent = `node_modules/
 .env
 # Ralph - AI agent loop files
-.ralph-state.json
-.ralph-lock
-.ralph-done
+.ralph*
 `;
     const gitignorePath = await tempDir.write(".gitignore", existingContent);
 

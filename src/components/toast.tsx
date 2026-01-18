@@ -1,6 +1,7 @@
 import { For, Show } from "solid-js";
 import { useTheme } from "../context/ThemeContext";
 import { useToast, type Toast, type ToastVariant } from "../context/ToastContext";
+import { layout } from "./tui-theme";
 
 /**
  * Get the foreground color for a toast variant.
@@ -92,11 +93,13 @@ export function ToastStack() {
     <Show when={toasts().length > 0}>
       <box
         position="absolute"
-        bottom={1}
-        left={0}
-        width="100%"
+        top={layout.header.height}
+        right={1}
+        width={40}
         flexDirection="column"
         backgroundColor={t().backgroundPanel}
+        border
+        borderColor={t().border}
       >
         <For each={toasts()}>
           {(toast) => <ToastItem toast={toast} />}

@@ -90,7 +90,17 @@ useKeyboard((e: KeyEvent) => {
 
 4. **Terminal title reset**: Call `renderer.setTerminalTitle("")` before `renderer.destroy()` to reset the window title on exit.
 
+5. **Orphan Text Nodes**: In OpenTUI's Solid renderer, all text nodes and text components like `<span>` and `<b>` MUST be children of a `<text>` component. Rendering text or spans directly inside a `<box>` or `<scrollbox>` will cause an "Orphan text error" uncaught exception.
+   ```tsx
+   // WRONG - will cause Orphan text error
+   <box><span>Hello</span></box>
+   
+   // CORRECT
+   <box><text><span>Hello</span></text></box>
+   ```
+
 ## Local Development & Building
+
 
 ### Building and Installing Locally
 

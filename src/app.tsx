@@ -15,24 +15,30 @@ import { ToastProvider, useToast } from "./context/ToastContext";
 import { ThemeProvider, useTheme } from "./context/ThemeContext";
 import { ToastStack } from "./components/toast";
 import { DialogSelect, type SelectOption } from "./ui/DialogSelect";
+import { EnhancedCommandPalette } from "./components/enhanced-command-palette";
 import { DialogAlert } from "./ui/DialogAlert";
 import { DialogPrompt } from "./ui/DialogPrompt";
 import { keymap, matchesKeybind } from "./lib/keymap";
 import type { LoopState, LoopOptions, PersistedState } from "./state";
 import { detectInstalledTerminals, launchTerminal, getAttachCommand as getAttachCmdFromTerminal, type KnownTerminal } from "./lib/terminal-launcher";
 import { copyToClipboard, detectClipboardTool } from "./lib/clipboard";
-import { loadConfig, setPreferredTerminal } from "./lib/config";
-import { parsePlanTasks, type Task } from "./plan";
+import { loadConfig, setPreferredTerminal, getAllFallbackAgents, setFallbackAgent, removeFallbackAgent, updateConfig } from "./lib/config";
+
+import { parsePlan, parsePlanTasks, savePlanTasks, type Task } from "./plan";
 import { layout } from "./components/tui-theme";
 import type { DetailsViewMode, UiTask } from "./components/tui-types";
+import type { TaskStatus } from "./types/task-status";
+
 import { isWindowsTerminal, isLegacyConsole } from "./lib/windows-console";
 import { useKeyboardReliable } from "./hooks/useKeyboardReliable";
 
 
-import { log } from "./util/log";
+import { log } from "./lib/log";
 import { addSteeringContext, createDebugSession } from "./loop";
 import { createLoopState, type LoopStateStore } from "./hooks/useLoopState";
 import { createLoopStats, type LoopStatsStore } from "./hooks/useLoopStats";
+
+import { InterruptHandler } from "./lib/interrupt";
 
 type AppProps = {
   options: LoopOptions;
@@ -40,6 +46,7 @@ type AppProps = {
   onQuit: () => void;
   iterationTimesRef?: number[];
   onKeyboardEvent?: () => void; // Called when first keyboard event is received
+  interruptHandler?: InterruptHandler;
 };
 
 /**
@@ -96,7 +103,9 @@ export type StartAppProps = {
   persistedState: PersistedState;
   onQuit: () => void;
   onKeyboardEvent?: () => void; // Called once when first keyboard event is received
+  interruptHandler?: InterruptHandler;
 };
+
 
 /**
  * Starts the TUI application and returns a promise that resolves when the app exits,
@@ -134,8 +143,10 @@ export async function startApp(props: StartAppProps): Promise<StartAppResult> {
         onQuit={onQuit}
         iterationTimesRef={iterationTimesRef}
         onKeyboardEvent={props.onKeyboardEvent}
+        interruptHandler={props.interruptHandler}
       />
     ),
+
     {
       // Lower FPS on Windows legacy consoles for better performance
       targetFps: isWindowsPlatform && !process.env.WT_SESSION ? 20 : 30,
@@ -259,28 +270,25 @@ export function App(props: AppProps) {
   // Whether to show completed tasks in the task list (default: false for optimization)
   const [showCompletedTasks, setShowCompletedTasks] = createSignal(false);
 
+  // Staged task status changes (taskId -> status)
+  const [stagedTaskStatuses, setStagedTaskStatuses] = createSignal<Record<string, TaskStatus>>({});
+
+
   // Function to refresh tasks from plan file
   const refreshTasks = async () => {
     if (!props.options.planFile) {
       return;
     }
 
+    const { done, total, error } = await parsePlan(props.options.planFile);
     const parsed = await parsePlanTasks(props.options.planFile);
     setTasks(parsed);
 
-    const total = parsed.length;
-    let done = 0;
-    for (const task of parsed) {
-      if (task.done) {
-        done++;
-      }
-    }
-
     setStateAndRender((prev) => {
-      if (prev.tasksComplete === done && prev.totalTasks === total) {
+      if (prev.tasksComplete === done && prev.totalTasks === total && prev.planError === error) {
         return prev;
       }
-      return { ...prev, tasksComplete: done, totalTasks: total };
+      return { ...prev, tasksComplete: done, totalTasks: total, planError: error };
     });
 
     const loopState = loopStore.state();
@@ -413,13 +421,19 @@ export function App(props: AppProps) {
               setKeyboardEventNotified={setKeyboardEventNotified}
               showTasks={showTasks}
               setShowTasks={setShowTasks}
-              tasks={tasks}
-              showCompletedTasks={showCompletedTasks}
-              setShowCompletedTasks={setShowCompletedTasks}
-              loopStore={loopStore}
-              loopStats={loopStats}
+               tasks={tasks}
+               showCompletedTasks={showCompletedTasks}
+               setShowCompletedTasks={setShowCompletedTasks}
+               stagedTaskStatuses={stagedTaskStatuses}
+               setStagedTaskStatuses={setStagedTaskStatuses}
+               refreshTasks={refreshTasks}
+               loopStore={loopStore}
+               loopStats={loopStats}
+
+              interruptHandler={props.interruptHandler}
             />
           </CommandProvider>
+
         </DialogProvider>
       </ToastProvider>
     </ThemeProvider>
@@ -447,13 +461,22 @@ type AppContentProps = {
   tasks: () => Task[];
   showCompletedTasks: () => boolean;
   setShowCompletedTasks: (v: boolean) => void;
+  stagedTaskStatuses: Accessor<Record<string, TaskStatus>>;
+  setStagedTaskStatuses: Setter<Record<string, TaskStatus>>;
+  refreshTasks: () => Promise<void>;
   // Hook-based state stores (for gradual migration)
+
   loopStore: LoopStateStore;
   loopStats: LoopStatsStore;
+  interruptHandler?: InterruptHandler;
 };
+
+
+import { DialogConfirm } from "./ui/DialogConfirm";
 
 /**
  * Inner component that uses context hooks for dialogs and commands.
+
  * Separated from App to be inside the context providers.
  */
 function AppContent(props: AppContentProps) {
@@ -462,6 +485,30 @@ function AppContent(props: AppContentProps) {
   const toast = useToast();
   const theme = useTheme();
   const { isInputFocused: dialogInputFocused } = useInputFocus();
+
+  // Track shown milestones to avoid duplicate toasts
+  const shownMilestones = new Set<number>();
+
+  // Milestone celebration toasts at 25%, 50%, 75%, 100%
+  createEffect(() => {
+    const complete = props.state().tasksComplete;
+    const total = props.state().totalTasks;
+    if (total === 0) return;
+    
+    const pct = Math.floor((complete / total) * 100);
+    const milestones = [25, 50, 75, 100];
+    
+    for (const milestone of milestones) {
+      if (pct >= milestone && !shownMilestones.has(milestone)) {
+        shownMilestones.add(milestone);
+        toast.show({
+          variant: "success",
+          message: `🎉 ${milestone}% complete!`,
+        });
+        break; // Only show one toast at a time
+      }
+    }
+  });
 
   // Get theme colors reactively - call theme.theme() to access the resolved theme
   const t = () => theme.theme();
@@ -542,19 +589,77 @@ function AppContent(props: AppContentProps) {
   });
   
   const [selectedTaskIndex, setSelectedTaskIndex] = createSignal(0);
+
+  /**
+   * Wrapper for togglePause that applies staged task status changes first.
+   * This implements the deferred execution model for manual task overrides.
+   */
+  const handleTogglePause = async () => {
+    // Apply staged task status changes before resuming if any
+    const staged = props.stagedTaskStatuses();
+    if (Object.keys(staged).length > 0) {
+      log("app", "Applying staged task status changes before resume/start", { count: Object.keys(staged).length });
+      
+      const updatedTasks = props.tasks().map(task => {
+        const stagedStatus = staged[task.id];
+        if (stagedStatus) {
+          return {
+            ...task,
+            done: stagedStatus === "done",
+            status: stagedStatus
+          };
+        }
+        return task;
+      });
+      
+      try {
+        await savePlanTasks(props.options.planFile, updatedTasks);
+        props.setStagedTaskStatuses({}); // Clear staged changes after persistence
+        toast.show({
+          variant: "success",
+          message: "Saved staged task changes",
+        });
+        // Trigger a task refresh to ensure everything is in sync
+        await props.refreshTasks();
+      } catch (err) {
+        log("app", "Failed to save staged task changes", { error: String(err) });
+        toast.show({
+          variant: "error",
+          message: "Failed to save task changes",
+        });
+        return; // Don't proceed to toggle pause if save failed
+      }
+    }
+    
+    await props.togglePause();
+  };
+
   const [detailsViewMode, setDetailsViewMode] = createSignal<DetailsViewMode>("output");
   const [showHelp, setShowHelp] = createSignal(false);
   const [showDashboard, setShowDashboard] = createSignal(false);
+  
+  // UI preference signals - initialized from persistent config
+  const initialConfig = loadConfig();
+  const [compactMode, setCompactMode] = createSignal(initialConfig.ui.compactMode);
+
 
   // All tasks converted to UiTask format
   const allUiTasks = createMemo<UiTask[]>(() =>
-    props.tasks().map((task) => ({
-      id: task.id,
-      title: task.text,
-      status: task.done ? "done" : "actionable",
-      line: task.line,
-    }))
+    props.tasks().map((task) => {
+      const stagedStatus = props.stagedTaskStatuses()[task.id];
+      const status = stagedStatus || (task.done ? "done" : "actionable");
+      
+      return {
+        id: task.id,
+        title: task.text,
+        status: status as TaskStatus,
+        line: task.line,
+        priority: task.priority,
+        category: task.category,
+      };
+    })
   );
+
 
   // Filtered tasks based on showCompletedTasks setting (default: hide completed for optimization)
   const uiTasks = createMemo<UiTask[]>(() => {
@@ -588,14 +693,44 @@ function AppContent(props: AppContentProps) {
     }
   });
 
+  /* Removed forcing output mode in PTY to allow viewing details/prompt */
+  /*
   createEffect(() => {
     if (props.state().adapterMode === "pty" && detailsViewMode() === "details") {
       setDetailsViewMode("output");
     }
   });
+  */
 
   const isCompact = createMemo(() => terminalDimensions().width < 80);
+
+  // Set up interrupt handler callbacks
+  createEffect(() => {
+    const ih = props.interruptHandler;
+    if (!ih) return;
+
+    ih.setOptions({
+      onShowDialog: () => {
+        dialog.show(() => (
+          <DialogConfirm
+            title="Quit Ralph?"
+            message="Are you sure you want to stop the automation loop?"
+            onConfirm={() => ih.confirm()}
+            onCancel={() => ih.cancel()}
+          />
+        ));
+      },
+      onHideDialog: () => {
+        // Dialog system handles hiding via pop() in onConfirm/onCancel
+      },
+      onConfirmed: async () => {
+        props.onQuit();
+      }
+    });
+  });
+
   const dashboardHeight = createMemo(() => (showDashboard() ? layout.progressDashboard.height : 0));
+
   const contentHeight = createMemo(() =>
     Math.max(
       1,
@@ -721,11 +856,12 @@ function AppContent(props: AppContentProps) {
           description,
           keybind: keymap.togglePause.label,
           onSelect: () => {
-            props.togglePause();
+            handleTogglePause();
           },
         },
       ];
     });
+
 
     // Register "Copy attach command" action
     command.register("copyAttach", () => [
@@ -733,7 +869,6 @@ function AppContent(props: AppContentProps) {
           title: "Copy attach command",
           value: "copyAttach",
           description: "Copy attach command to clipboard",
-          keybind: keymap.copyAttach.label,
           disabled: !props.state().sessionId || props.state().adapterMode === "pty",
           onSelect: () => {
             copyAttachCommand();
@@ -774,7 +909,6 @@ function AppContent(props: AppContentProps) {
         title: props.showCompletedTasks() ? "Hide completed tasks" : "Show completed tasks",
         value: "toggleCompletedTasks",
         description: "Show/hide completed tasks in the task list",
-        keybind: keymap.toggleCompleted.label,
         onSelect: () => {
           log("app", "Completed tasks toggled via command palette", { showCompleted: !props.showCompletedTasks() });
           props.setShowCompletedTasks(!props.showCompletedTasks());
@@ -791,6 +925,43 @@ function AppContent(props: AppContentProps) {
         onSelect: () => {
           // Defer to next tick so command palette's pop() completes first
           queueMicrotask(() => showThemeDialog());
+        },
+      },
+    ]);
+
+    // Register "Toggle compact mode" command
+    command.register("toggleCompactMode", () => [
+      {
+        title: compactMode() ? "Disable compact mode" : "Enable compact mode",
+        value: "toggleCompactMode",
+        description: "Switch between single-line and multi-line task layout",
+        onSelect: () => {
+          const newValue = !compactMode();
+          setCompactMode(newValue);
+          // Persist preference to config file
+          try {
+            const current = loadConfig();
+            updateConfig({ ui: { ...current.ui, compactMode: newValue } });
+            log("app", "Compact mode toggled", { compactMode: newValue });
+            toast.show({
+              variant: "info",
+              message: newValue ? "Compact mode enabled (single-line)" : "Dense mode enabled (multi-line)",
+            });
+          } catch (err) {
+            log("app", "Failed to persist compactMode config", { error: String(err) });
+          }
+        },
+      },
+    ]);
+
+    // Register "Configure fallback agents" command
+    command.register("fallbackAgents", () => [
+      {
+        title: "Configure fallback agents",
+        value: "fallbackAgents",
+        description: "Set fallback models for rate limit handling",
+        onSelect: () => {
+          queueMicrotask(() => showFallbackAgentDialog());
         },
       },
     ]);
@@ -879,6 +1050,113 @@ function AppContent(props: AppContentProps) {
       />
     ));
     props.renderer.requestRender?.();
+  };
+
+  /**
+   * Show fallback agent configuration dialog.
+   * Allows users to add, view, or remove fallback agent mappings for rate limit handling.
+   */
+  const showFallbackAgentDialog = () => {
+    const currentMappings = getAllFallbackAgents();
+    const mappingEntries = Object.entries(currentMappings);
+
+    // Build options list: existing mappings + "Add new" option
+    const options: SelectOption[] = [
+      {
+        title: "➕ Add new fallback mapping",
+        value: "__add_new__",
+        description: "Configure a new primary → fallback agent mapping",
+      },
+      ...mappingEntries.map(([primary, fallback]) => ({
+        title: `${primary} → ${fallback}`,
+        value: primary,
+        description: "Select to remove this mapping",
+      })),
+    ];
+
+    if (mappingEntries.length === 0) {
+      options.push({
+        title: "(No fallback agents configured)",
+        value: "__none__",
+        description: "Add mappings to enable automatic fallback on rate limits",
+        disabled: true,
+      });
+    }
+
+    dialog.show(() => (
+      <DialogSelect
+        title="Configure Fallback Agents"
+        placeholder="Select to add or remove mappings..."
+        options={options}
+        onSelect={(opt) => {
+          if (opt.value === "__add_new__") {
+            // Show prompt for primary agent
+            queueMicrotask(() => showAddFallbackDialog());
+          } else if (opt.value !== "__none__") {
+            // Confirm removal
+            const fallback = currentMappings[opt.value];
+            dialog.show(() => (
+              <DialogAlert
+                title="Remove Fallback Mapping?"
+                message={`Remove mapping:\n${opt.value} → ${fallback}\n\nThis agent will no longer have an automatic fallback.`}
+                variant="warning"
+                onDismiss={() => {
+                  removeFallbackAgent(opt.value);
+                  log("app", "Fallback agent removed", { primary: opt.value });
+                  toast.show({
+                    variant: "success",
+                    message: `Removed fallback for ${opt.value}`,
+                  });
+                }}
+              />
+            ));
+          }
+        }}
+        onCancel={() => {}}
+        borderColor={t().info}
+      />
+    ));
+  };
+
+  /**
+   * Show dialog to add a new fallback agent mapping.
+   */
+  const showAddFallbackDialog = () => {
+    dialog.show(() => (
+      <DialogPrompt
+        title="Enter primary agent/model name (e.g., claude-opus-4):"
+        placeholder="claude-opus-4"
+        onSubmit={(primaryAgent) => {
+          if (!primaryAgent.trim()) {
+            toast.show({ variant: "error", message: "Primary agent name required" });
+            return;
+          }
+          // Now prompt for fallback agent
+          queueMicrotask(() => {
+            dialog.show(() => (
+              <DialogPrompt
+                title={`Enter fallback agent for "${primaryAgent}":`}
+                placeholder="claude-sonnet-4-20250501"
+                onSubmit={(fallbackAgent) => {
+                  if (!fallbackAgent.trim()) {
+                    toast.show({ variant: "error", message: "Fallback agent name required" });
+                    return;
+                  }
+                  setFallbackAgent(primaryAgent.trim(), fallbackAgent.trim());
+                  log("app", "Fallback agent added", { primary: primaryAgent, fallback: fallbackAgent });
+                  toast.show({
+                    variant: "success",
+                    message: `Added: ${primaryAgent} → ${fallbackAgent}`,
+                  });
+                }}
+                onCancel={() => {}}
+              />
+            ));
+          });
+        }}
+        onCancel={() => {}}
+      />
+    ));
   };
 
   /**
@@ -1158,7 +1436,7 @@ function AppContent(props: AppContentProps) {
     }));
 
     dialog.show(() => (
-      <DialogSelect
+      <EnhancedCommandPalette
         title="Command Palette"
         placeholder="Type to search commands..."
         options={options}
@@ -1206,13 +1484,19 @@ function AppContent(props: AppContentProps) {
 
     const key = e.name.toLowerCase();
 
-    // SAFETY VALVE: Ctrl+C always quits, even if a dialog is open/broken
-    // This ensures users can always exit the app without killing the terminal
+    // SAFETY VALVE: Ctrl+C triggers interruption handler
     if (key === "c" && e.ctrl) {
-      log("app", "Quit requested via Ctrl+C (safety valve)");
-      props.onQuit();
+      log("app", "Interruption requested via Ctrl+C");
+      if (props.interruptHandler) {
+        // Manually trigger SIGINT handling logic
+        // @ts-ignore - accessing private method for internal coordination
+        props.interruptHandler.handleSigint();
+      } else {
+        props.onQuit();
+      }
       return;
     }
+
 
     // Skip if any input is focused (dialogs, steering mode, etc.)
     if (isInputFocused()) {
@@ -1241,9 +1525,19 @@ function AppContent(props: AppContentProps) {
     }
 
     if (key === "o" && !e.ctrl && !e.meta) {
-      setDetailsViewMode((mode) => (mode === "details" ? "output" : "details"));
+      log("app", "Toggle view mode command received", { current: detailsViewMode() });
+      setDetailsViewMode((mode) => {
+        let next: DetailsViewMode = "details";
+        if (mode === "details") next = "output";
+        else if (mode === "output") next = "prompt";
+        else next = "details";
+        
+        log("app", "View mode transition", { from: mode, to: next });
+        return next;
+      });
       return;
     }
+
 
     // ESC key: close tasks panel if open
     if (key === "escape" && props.showTasks()) {
@@ -1266,10 +1560,39 @@ function AppContent(props: AppContentProps) {
       return;
     }
 
-    // Shift+C: toggle completed tasks visibility (check before plain C)
-    if (matchesKeybind(e, keymap.toggleCompleted)) {
-      log("app", "Completed tasks toggled via Shift+C", { showCompleted: !props.showCompletedTasks() });
-      props.setShowCompletedTasks(!props.showCompletedTasks());
+    if (props.showTasks() && (key === "pageup")) {
+      setSelectedTaskIndex((prev) => Math.max(0, prev - 10));
+      return;
+    }
+
+    if (props.showTasks() && (key === "pagedown")) {
+      setSelectedTaskIndex((prev) => Math.min(uiTasks().length - 1, prev + 10));
+      return;
+    }
+
+    // X key: toggle status of selected task (deferred execution)
+    if (matchesKeybind(e, keymap.toggleTaskStatus) && props.showTasks()) {
+      const selected = selectedTask();
+      if (selected) {
+        log("app", "Toggling status for task", { id: selected.id, currentStatus: selected.status });
+        
+        const nextStatus = (current: TaskStatus): TaskStatus => {
+          if (current === "pending") return "actionable";
+          if (current === "actionable") return "done";
+          return "pending";
+        };
+
+        const newStatus = nextStatus(selected.status);
+        props.setStagedTaskStatuses(prev => ({
+          ...prev,
+          [selected.id]: newStatus
+        }));
+        
+        toast.show({
+          variant: "info",
+          message: `Staged status for ${selected.id}: ${newStatus}`,
+        });
+      }
       return;
     }
 
@@ -1301,9 +1624,10 @@ function AppContent(props: AppContentProps) {
         return;
       }
       // In normal mode, p toggles pause
-      props.togglePause();
+      handleTogglePause();
       return;
     }
+
 
     // t key: launch terminal with attach command (only when no modifiers)
     if (matchesKeybind(e, keymap.terminalConfig)) {
@@ -1326,13 +1650,19 @@ function AppContent(props: AppContentProps) {
       }
     }
 
-    // q key: quit
+    // q key: quit (triggers interruption handler)
     // Phase 2.2: Use matchesKeybind for consistent key routing
     if (matchesKeybind(e, keymap.quit)) {
       log("app", "Quit requested via 'q' key");
-      props.onQuit();
+      if (props.interruptHandler) {
+        // @ts-ignore - accessing private method for internal coordination
+        props.interruptHandler.handleSigint();
+      } else {
+        props.onQuit();
+      }
       return;
     }
+
 
     // Note: Ctrl+C is handled above as a safety valve (before isInputFocused check)
   }, { debugLabel: "AppContent" });
@@ -1349,12 +1679,17 @@ function AppContent(props: AppContentProps) {
           iteration={props.state().iteration}
           tasksComplete={props.state().tasksComplete}
           totalTasks={props.state().totalTasks}
+          planError={props.state().planError}
           elapsedMs={props.loopStats.elapsedMs()}
           eta={props.loopStats.etaMs()}
           debug={props.options.debug}
           selectedTask={currentTask()}
           agentName={props.options.agent}
           adapterName={props.options.adapter ?? props.state().adapterMode}
+          currentModel={props.state().currentModel}
+          sandboxConfig={props.state().sandboxConfig}
+          activeAgentState={props.state().activeAgentState}
+          rateLimitState={props.state().rateLimitState}
         />
         {showDashboard() && (
           <ProgressDashboard
@@ -1364,6 +1699,8 @@ function AppContent(props: AppContentProps) {
             planName={props.options.planFile}
             currentTaskId={currentTask()?.id}
             currentTaskTitle={currentTask()?.title}
+            currentModel={props.state().currentModel}
+            sandboxConfig={props.state().sandboxConfig}
           />
         )}
       <box
@@ -1377,11 +1714,16 @@ function AppContent(props: AppContentProps) {
             selectedIndex={selectedTaskIndex()}
             width={leftPanelWidth()}
             height={contentHeight()}
+            totalTasks={allUiTasks().length}
+            showingCompleted={props.showCompletedTasks()}
+            compactMode={compactMode()}
+            onSelect={(index) => setSelectedTaskIndex(index)}
           />
         )}
         <RightPanel
           selectedTask={selectedTask()}
           viewMode={detailsViewMode()}
+          status={props.state().status}
           adapterMode={props.state().adapterMode ?? "sdk"}
           events={props.state().events}
           isIdle={props.state().isIdle}
@@ -1389,7 +1731,9 @@ function AppContent(props: AppContentProps) {
           terminalBuffer={props.state().terminalBuffer || ""}
           terminalCols={rightPanelCols()}
           terminalRows={rightPanelRows()}
+          promptText={props.state().promptText}
         />
+
       </box>
       <Footer
         commits={props.state().commits}
@@ -1399,7 +1743,10 @@ function AppContent(props: AppContentProps) {
         linesRemoved={props.state().linesRemoved}
         sessionActive={!!props.state().sessionId || props.state().adapterMode === "pty"}
         tokens={props.state().tokens}
+        adapterMode={props.state().adapterMode}
+        rateLimitState={props.state().rateLimitState}
       />
+
       <PausedOverlay visible={props.state().status === "paused"} />
       <SteeringOverlay
         visible={props.commandMode()}

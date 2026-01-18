@@ -24,13 +24,6 @@ export interface KeybindDef {
  * Add new keybinds here to ensure consistency across the app.
  */
 export const keymap = {
-  /** Copy the attach command to clipboard */
-  copyAttach: {
-    key: "c",
-    shift: true,
-    label: "Shift+C",
-  } as KeybindDef,
-
   /** Open terminal configuration dialog */
   terminalConfig: {
     key: "t",
@@ -68,11 +61,10 @@ export const keymap = {
     label: "C",
   } as KeybindDef,
 
-  /** Toggle showing completed tasks in task list */
-  toggleCompleted: {
-    key: "c",
-    shift: true,
-    label: "Shift+C",
+  /** Toggle status of selected task */
+  toggleTaskStatus: {
+    key: "x",
+    label: "X",
   } as KeybindDef,
 } as const;
 

@@ -11,7 +11,7 @@
 import { useRenderer } from "@opentui/solid";
 import type { KeyEvent } from "@opentui/core";
 import { createEffect, onCleanup } from "solid-js";
-import { log } from "../util/log";
+import { log } from "../lib/log";
 
 export interface UseKeyboardReliableOptions {
   /** Include release events - callback receives events with eventType: "release" */

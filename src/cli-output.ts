@@ -143,7 +143,20 @@ export function createHeadlessOutput(options: {
     onIdleChanged: (isIdle) => {
       emit({ type: "idle", isIdle });
     },
+    onModel: (model) => {
+      // Could emit model change event if needed
+    },
+    onSandbox: (sandbox) => {
+      // Could emit sandbox event if needed
+    },
+    onRateLimit: (state) => {
+      emit({ type: "error", message: `Rate limit detected. Falling back to ${state.fallbackAgent}` });
+    },
+    onActiveAgent: (state) => {
+      // Could emit active agent event if needed
+    },
   };
+
 
   return {
     callbacks,

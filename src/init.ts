@@ -3,6 +3,7 @@ import { dirname, extname, join } from "path";
 import { parsePrdItems, type PrdItem } from "./plan";
 import { PLUGIN_TEMPLATE } from "./templates/plugin-template";
 import { AGENTS_TEMPLATE } from "./templates/agents-template";
+import { isRedundantTask } from "./lib/task-deduplication";
 
 // Re-export for backwards compatibility
 export {
@@ -29,9 +30,7 @@ export const DEFAULT_PROTECTED_FILES = [
  * These are runtime files that should not be committed.
  */
 export const GITIGNORE_ENTRIES = [
-  ".ralph-state.json",
-  ".ralph-lock",
-  ".ralph-done",
+  ".ralph*",
 ] as const;
 
 /**
@@ -236,9 +235,15 @@ async function updateGitignore(
   result.created.push(gitignorePath);
 }
 
-function extractTasksFromText(content: string): string[] {
-  const tasks: string[] = [];
-  const seen = new Set<string>();
+type ExtractedTask = {
+  description: string;
+  passes: boolean;
+  category?: string;
+};
+
+function extractTasksFromText(content: string): ExtractedTask[] {
+  const tasks: ExtractedTask[] = [];
+  const taskDescriptions: string[] = [];
   let inCodeBlock = false;
 
   for (const line of content.split("\n")) {
@@ -250,18 +255,59 @@ function extractTasksFromText(content: string): string[] {
     if (inCodeBlock || !trimmed) continue;
     if (trimmed.startsWith("#")) continue;
 
-    let match =
-      trimmed.match(/^- \[[ xX]\]\s+(.+)/) ??
-      trimmed.match(/^[-*+]\s+(.+)/) ??
-      trimmed.match(/^\d+[.)]\s+(.+)/);
+    let description = "";
+    let passes = false;
+    let category: string | undefined;
 
-    if (!match) continue;
-    const task = match[1].trim();
-    if (!task) continue;
-    const key = task.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    tasks.push(task);
+    // Enhanced regex to handle indentation for nested items
+    // Matches: 
+    // - [ ] Task
+    //   - [x] Subtask
+    // 1. [ ] Numbered task
+    const checkboxMatch = line.match(/^\s*([-*+]|\d+[.)])\s+\[([ xX-])\]\s+(.+)/);
+    
+    if (checkboxMatch) {
+      // If it has an explicit checkbox, it is DEFINITELY a task.
+      // We bypass noise filtering heuristics for explicit tasks.
+      passes = checkboxMatch[2].toLowerCase() === "x";
+      description = checkboxMatch[3].trim();
+    } else {
+      // Try plain list pattern for potential tasks
+      const listMatch =
+        line.match(/^\s*([-*+]|\d+[.)])\s+(.+)/);
+      
+      if (listMatch) {
+        const candidate = listMatch[2].trim();
+        // Heuristic: If it's a very short line or looks like a table/metadata, skip
+        if (
+          candidate.length < 5 || 
+          candidate.includes("|") || 
+          candidate.match(/^[a-z]/) || // Starts with lowercase (likely a note fragment)
+          candidate.match(/^[A-Z][a-z]+: /) || // "Summary: ...", "Note: ..."
+          candidate.match(/^(No|Sample)\s+[a-z]+/) // "No backend", "Sample data", etc. (assumptions)
+        ) {
+          continue;
+        }
+        description = candidate;
+      }
+    }
+
+    if (!description) continue;
+
+    // Try to extract category if description starts with [tag]
+    const categoryMatch = description.match(/^\[([^\]]+)\]\s*(.+)/);
+    if (categoryMatch) {
+      category = categoryMatch[1];
+      description = categoryMatch[2].trim();
+    }
+
+    // Use smart deduplication to skip redundant tasks
+    if (isRedundantTask(description, taskDescriptions)) {
+      continue;
+    }
+
+    taskDescriptions.push(description);
+    tasks.push({ description, passes, category });
   }
 
   return tasks;
@@ -278,12 +324,12 @@ function createTemplateItems(): PrdItem[] {
   ];
 }
 
-function createPrdItemsFromTasks(tasks: string[]): PrdItem[] {
+function createPrdItemsFromTasks(tasks: ExtractedTask[]): PrdItem[] {
   return tasks.map((task) => ({
-    category: DEFAULT_CATEGORY,
-    description: task,
+    category: task.category ?? DEFAULT_CATEGORY,
+    description: task.description,
     steps: [DEFAULT_STEP],
-    passes: false,
+    passes: task.passes,
   }));
 }
 

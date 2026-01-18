@@ -11,7 +11,7 @@ import type { Accessor, Setter } from "solid-js";
 import { resolveTheme, type Theme, type ThemeMode } from "../lib/theme-resolver";
 import { themeNames, defaultTheme } from "../lib/themes/index";
 import { setCurrentTheme } from "../lib/theme-colors";
-import { log } from "../util/log";
+import { log } from "../lib/log";
 
 /**
  * Ralph state from kv.json

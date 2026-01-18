@@ -1,3 +1,6 @@
+import { log } from "./lib/log";
+import type { TaskStatus } from "./types/task-status";
+
 /**
  * Plan file parser for openralph
  */
@@ -7,7 +10,9 @@ export type PrdItem = {
   description: string;
   steps?: string[];
   passes: boolean;
+  status?: TaskStatus;
 };
+
 
 export type PlanFormat = "prd-json" | "markdown" | "unknown";
 
@@ -21,6 +26,7 @@ export type PlanValidation = {
 export type PlanProgress = {
   done: number;
   total: number;
+  error?: string;
 };
 
 /**
@@ -35,7 +41,15 @@ export type Task = {
   text: string;
   /** Whether the task is completed */
   done: boolean;
+  /** Task priority (0-4) */
+  priority?: number;
+  /** Task category */
+  category?: string;
+  /** Granular task status */
+  status?: TaskStatus;
 };
+
+
 
 // Regex to match markdown checkbox items
 // Captures: optional leading whitespace, checkbox state, and task text
@@ -49,11 +63,18 @@ function normalizePrdItems(data: unknown): PrdItem[] | null {
     items = (data as { items: unknown[] }).items;
   }
 
-  if (!items) return null;
+  if (!items) {
+    log("plan", "No items array found in PRD data");
+    return null;
+  }
 
   const normalized: PrdItem[] = [];
-  for (const item of items) {
-    if (!item || typeof item !== "object") return null;
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    if (!item || typeof item !== "object") {
+      log("plan", `Invalid item at index ${i}`, { item });
+      return null;
+    }
     const candidate = item as Record<string, unknown>;
     const description =
       typeof candidate.description === "string"
@@ -61,14 +82,21 @@ function normalizePrdItems(data: unknown): PrdItem[] | null {
         : typeof candidate.title === "string"
           ? candidate.title
           : null;
-    if (!description) return null;
-    if (typeof candidate.passes !== "boolean") return null;
+    if (!description) {
+      log("plan", `Missing description at index ${i}`, { item });
+      return null;
+    }
+    if (typeof candidate.passes !== "boolean") {
+      log("plan", `Missing/invalid 'passes' boolean at index ${i}`, { item });
+      return null;
+    }
 
     const steps = candidate.steps;
     if (
       steps !== undefined &&
       (!Array.isArray(steps) || steps.some((step) => typeof step !== "string"))
     ) {
+      log("plan", `Invalid 'steps' array at index ${i}`, { item });
       return null;
     }
 
@@ -77,6 +105,7 @@ function normalizePrdItems(data: unknown): PrdItem[] | null {
       description,
       steps: steps as string[] | undefined,
       passes: candidate.passes as boolean,
+      status: typeof candidate.status === "string" ? (candidate.status as TaskStatus) : undefined,
     });
   }
 
@@ -91,7 +120,12 @@ export function parsePrdItems(content: string): PrdItem[] | null {
   try {
     const parsed = JSON.parse(trimmed) as unknown;
     return normalizePrdItems(parsed);
-  } catch {
+  } catch (error) {
+    log("plan", "Failed to parse PRD JSON", { 
+      error: error instanceof Error ? error.message : String(error),
+      contentLength: trimmed.length,
+      preview: trimmed.slice(0, 100)
+    });
     return null;
   }
 }
@@ -148,13 +182,20 @@ export async function parsePlanTasks(path: string): Promise<Task[]> {
   const content = await file.text();
   const prdItems = parsePrdItems(content);
   if (prdItems) {
-    return prdItems.map((item, index) => ({
-      id: `prd-${index + 1}`,
-      line: index + 1,
-      text: item.category ? `[${item.category}] ${item.description}` : item.description,
-      done: item.passes,
-    }));
+    return prdItems.map((item, index) => {
+      // Map category/priority from PRD item if available
+      // Note: PrdItem currently only has category and description
+      return {
+        id: `prd-${index + 1}`,
+        line: index + 1,
+        text: item.description,
+        done: item.passes,
+        category: item.category,
+        status: item.status,
+      };
+    });
   }
+
 
   return parseMarkdownTasks(content);
 }
@@ -173,12 +214,32 @@ export async function parsePlan(path: string): Promise<PlanProgress> {
 
   const content = await file.text();
 
-  const prdItems = parsePrdItems(content);
-  if (prdItems) {
-    const done = prdItems.filter((item) => item.passes).length;
-    return { done, total: prdItems.length };
+  try {
+    const prdItems = parsePrdItems(content);
+    if (prdItems) {
+      const done = prdItems.filter((item) => item.passes).length;
+      return { done, total: prdItems.length };
+    }
+  } catch (err) {
+    return { 
+      done: 0, 
+      total: 0, 
+      error: err instanceof Error ? err.message : String(err) 
+    };
   }
 
+  // If content is present but parsePrdItems returned null, check if it was intended to be JSON
+  const trimmed = content.trim();
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+    // It looks like JSON but failed to parse/normalize
+    return {
+      done: 0,
+      total: 0,
+      error: "Invalid PRD JSON format. Check for syntax errors."
+    };
+  }
+
+  // Fallback to markdown parsing
   // Remove content inside fenced code blocks (```...```) before counting
   // This prevents counting checkboxes that appear in code examples
   const contentWithoutCodeBlocks = content.replace(/```[\s\S]*?```/g, "");
@@ -244,4 +305,80 @@ export async function validatePlanCompletion(planFile: string): Promise<boolean>
   const { done, total } = await parsePlan(planFile);
   return total > 0 && done === total;
 }
+
+/**
+ * Save updated tasks back to the plan file.
+ * Supports both PRD JSON and Markdown formats.
+ * @param path - Path to the plan file
+ * @param updatedTasks - Array of tasks with updated status/done state
+ */
+export async function savePlanTasks(path: string, updatedTasks: Task[]): Promise<void> {
+  const file = Bun.file(path);
+  if (!(await file.exists())) {
+    throw new Error(`Plan file does not exist: ${path}`);
+  }
+
+  const content = await file.text();
+  const prdItems = parsePrdItems(content);
+
+  if (prdItems) {
+    // JSON Format
+    try {
+      const parsed = JSON.parse(content);
+      let items: any[];
+      if (Array.isArray(parsed)) {
+        items = parsed;
+      } else if (parsed && typeof parsed === "object" && Array.isArray(parsed.items)) {
+        items = parsed.items;
+      } else {
+        throw new Error("Invalid PRD JSON structure");
+      }
+
+      for (const task of updatedTasks) {
+        const match = task.id.match(/^prd-(\d+)$/);
+        if (match) {
+          const index = parseInt(match[1], 10) - 1;
+          if (items[index]) {
+            items[index].passes = task.done;
+            if (task.status) {
+              items[index].status = task.status;
+            }
+          }
+        }
+      }
+
+      await Bun.write(path, JSON.stringify(parsed, null, 2));
+      log("plan", `Saved ${updatedTasks.length} tasks to PRD JSON`, { path });
+    } catch (error) {
+      log("plan", "Failed to save PRD JSON", { error: String(error) });
+      throw error;
+    }
+  } else {
+    // Markdown Format
+    const lines = content.split(/\r?\n/);
+    let modified = false;
+
+    for (const task of updatedTasks) {
+      const lineIndex = task.line - 1;
+      if (lines[lineIndex]) {
+        const match = lines[lineIndex].match(CHECKBOX_PATTERN);
+        if (match) {
+          const [, indent, , text] = match;
+          const checkbox = task.done ? "x" : " ";
+          const newLine = `${indent}- [${checkbox}] ${text}`;
+          if (lines[lineIndex] !== newLine) {
+            lines[lineIndex] = newLine;
+            modified = true;
+          }
+        }
+      }
+    }
+
+    if (modified) {
+      await Bun.write(path, lines.join("\n"));
+      log("plan", `Saved ${updatedTasks.length} tasks to Markdown`, { path });
+    }
+  }
+}
+
 

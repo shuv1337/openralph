@@ -17,7 +17,6 @@ export function PausedOverlay(props: PausedOverlayProps) {
         height="100%"
         justifyContent="center"
         alignItems="center"
-        backgroundColor={t().backgroundElement}
       >
         <box
           padding={2}

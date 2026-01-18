@@ -162,14 +162,17 @@ describe("parsePlanTasks", () => {
     expect(result[0]).toEqual({
       id: "prd-1",
       line: 1,
-      text: "[functional] Create the initial project scaffolding",
+      text: "Create the initial project scaffolding",
       done: true,
+      category: "functional",
     });
     expect(result[1]).toEqual({
       id: "prd-2",
       line: 2,
-      text: "[integration] Wire up the API client",
+      text: "Wire up the API client",
       done: false,
+      category: "integration",
     });
+
   });
 });

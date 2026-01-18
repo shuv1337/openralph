@@ -1,11 +1,18 @@
 import { createOpencodeServer, createOpencodeClient } from "@opencode-ai/sdk";
 import { getAdapter, initializeAdapters } from "./adapters/registry.js";
 import type { LoopOptions, PersistedState, SessionInfo, ToolEvent } from "./state.js";
+import type { SandboxConfig, RateLimitState, ActiveAgentState } from "./components/tui-types";
 import { getHeadHash, getCommitsSince, getDiffStats } from "./git.js";
 import { parsePlan, validatePlanCompletion } from "./plan.js";
-import { log } from "./util/log.js";
+import { log } from "./lib/log";
+import { rateLimitDetector, getFallbackAgent } from "./lib/rate-limit";
+import { stripAnsiCodes } from "./lib/ansi";
+
+
+import { ErrorHandler, ErrorContext } from "./lib/error-handler";
 
 const DEFAULT_PROMPT = `READ all of {plan} and {progress}. Pick ONE task with passes=false (prefer highest-risk/highest-impact). Keep changes small: one logical change per commit. Update {plan} by setting passes=true and adding notes or steps as needed. Append a brief entry to {progress} with what changed and why. Run feedback loops before committing: bun run typecheck, bun test, bun run lint (if missing, note it in {progress} and continue). Commit change (update {plan} in the same commit). ONLY do one task unless GLARINGLY OBVIOUS steps should run together. Quality bar: production code, maintainable, tests when appropriate. If you learn a critical operational detail, update AGENTS.md. When ALL tasks complete, create .ralph-done and output <promise>COMPLETE</promise>. NEVER GIT PUSH. ONLY COMMIT.`;
+
 
 const steeringContext: string[] = [];
 
@@ -343,10 +350,29 @@ export async function createDebugSession(options: {
  * Clean up debug mode resources.
  * Call this when exiting debug mode.
  */
-export function cleanupDebugSession(): void {
+export async function cleanupDebugSession(): Promise<void> {
   if (debugServer) {
     log("loop", "Debug mode: cleaning up server");
-    debugServer.close();
+    const shouldForceCleanup = !debugServer.attached;
+    
+    try {
+      debugServer.close();
+      log("loop", "Debug mode: server close called");
+    } catch (error) {
+      log("loop", "Debug mode: error closing server", {
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+    
+    // Wait briefly for graceful shutdown
+    await Bun.sleep(500);
+    
+    // On Windows, force terminate any remaining processes (only if we started the server)
+    if (process.platform === "win32" && shouldForceCleanup) {
+      log("loop", "Debug mode: Windows force cleanup");
+      await forceTerminateOpencodeProcesses();
+    }
+    
     debugServer = null;
   }
   debugClient = null;
@@ -450,7 +476,7 @@ export type LoopCallbacks = {
     duration: number,
     commits: number,
   ) => void;
-  onTasksUpdated: (done: number, total: number) => void;
+  onTasksUpdated: (done: number, total: number, error?: string) => void;
   onCommitsUpdated: (commits: number) => void;
   onDiffUpdated: (added: number, removed: number) => void;
   onPause: () => void;
@@ -467,6 +493,16 @@ export type LoopCallbacks = {
   onTokens?: (tokens: TokenUsage) => void;
   /** Called when the plan file is modified (for real-time task list updates) */
   onPlanFileModified?: () => void;
+  /** Called when the model being used is identified or changed */
+  onModel?: (model: string) => void;
+  /** Called when sandbox status is identified */
+  onSandbox?: (sandbox: SandboxConfig) => void;
+  /** Called when rate limit is detected or cleared */
+  onRateLimit?: (state: RateLimitState) => void;
+  /** Called when active agent state changes */
+  onActiveAgent?: (state: ActiveAgentState) => void;
+  /** Called when the full system prompt is generated for the current iteration */
+  onPrompt?: (prompt: string) => void;
 };
 
 type PauseState = {
@@ -478,7 +514,11 @@ const PAUSE_POLL_INTERVAL_MS = 1000;
 async function waitWhilePaused(
   pauseState: PauseState,
   callbacks: LoopCallbacks,
-  signal: AbortSignal
+  signal: AbortSignal,
+  hooks?: {
+    onPause?: () => Promise<void>;
+    onResume?: () => Promise<void>;
+  }
 ): Promise<boolean> {
   const pauseFilePath = ".ralph-pause";
   if (!(await Bun.file(pauseFilePath).exists())) {
@@ -486,6 +526,7 @@ async function waitWhilePaused(
       pauseState.value = false;
       log("loop", "Resuming");
       callbacks.onResume();
+      if (hooks?.onResume) await hooks.onResume();
     }
     return false;
   }
@@ -494,6 +535,7 @@ async function waitWhilePaused(
     pauseState.value = true;
     log("loop", "Pausing");
     callbacks.onPause();
+    if (hooks?.onPause) await hooks.onPause();
   }
 
   while (!signal.aborted && (await Bun.file(pauseFilePath).exists())) {
@@ -504,9 +546,155 @@ async function waitWhilePaused(
     pauseState.value = false;
     log("loop", "Resuming");
     callbacks.onResume();
+    if (hooks?.onResume) await hooks.onResume();
   }
 
   return true;
+}
+
+/**
+ * Force terminate any remaining opencode child processes on Windows.
+ * This is a fallback when graceful shutdown doesn't complete in time.
+ */
+async function forceTerminateOpencodeProcesses(): Promise<void> {
+  if (process.platform !== "win32") {
+    return;
+  }
+
+  try {
+    // Get list of all processes with ID, ParentID, Name using PowerShell
+    // Win32_Process is faster than Get-Process for parent/child relationships
+    const cmd = [
+      "powershell",
+      "-NoProfile",
+      "-Command",
+      "Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name | ConvertTo-Json -Depth 1"
+    ];
+
+    const proc = Bun.spawn(cmd, {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+
+    const output = await new Response(proc.stdout).text();
+    // Wait for process to exit
+    await proc.exited;
+
+    if (proc.exitCode !== 0) {
+       // Log but don't throw - this is best-effort cleanup
+       const error = await new Response(proc.stderr).text();
+       log("loop", "Failed to get process list for cleanup", { error });
+       return;
+    }
+
+    let processes: any[];
+    try {
+      processes = JSON.parse(output);
+      // ConvertTo-Json returns single object if only one result
+      if (!Array.isArray(processes)) {
+        processes = [processes];
+      }
+    } catch (e) {
+       log("loop", "Failed to parse process list JSON", { error: String(e) });
+       return;
+    }
+
+    const myPid = process.pid;
+    const parentMap = new Map<number, number>();
+    const opencodePids: number[] = [];
+
+    // Build process tree map and find targets
+    for (const p of processes) {
+      if (p && typeof p.ProcessId === 'number') {
+        parentMap.set(p.ProcessId, p.ParentProcessId);
+        // Case-insensitive check for opencode.exe
+        if (p.Name && typeof p.Name === 'string' && p.Name.toLowerCase() === 'opencode.exe') {
+          opencodePids.push(p.ProcessId);
+        }
+      }
+    }
+
+    const pidsToKill: number[] = [];
+
+    // Filter for descendants of current process
+    for (const pid of opencodePids) {
+      let current = pid;
+      let isDescendant = false;
+      const visited = new Set<number>(); // Prevent infinite loops
+
+      // Traverse up the parent chain
+      while (current && current !== 0 && !visited.has(current)) {
+        visited.add(current);
+        const parent = parentMap.get(current);
+        if (!parent) break;
+
+        if (parent === myPid) {
+          isDescendant = true;
+          break;
+        }
+        current = parent;
+      }
+
+      if (isDescendant) {
+        pidsToKill.push(pid);
+      }
+    }
+
+    if (pidsToKill.length > 0) {
+      log("loop", `Terminating ${pidsToKill.length} opencode.exe descendants`, { pids: pidsToKill });
+      
+      // Kill each identified descendant
+      for (const pid of pidsToKill) {
+        try {
+           // Use taskkill for robust termination on Windows
+           const killProc = Bun.spawn(["taskkill", "/F", "/PID", String(pid)], {
+             stdout: "ignore",
+             stderr: "ignore"
+           });
+           await killProc.exited;
+        } catch (e) {
+           log("loop", `Failed to kill PID ${pid}`, { error: String(e) });
+        }
+      }
+    }
+
+  } catch (error) {
+    log("loop", "Error during process cleanup", { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+  }
+}
+
+/**
+ * Wait for a promise with a timeout.
+ * Returns true if the promise resolved within the timeout, false otherwise.
+ */
+async function waitWithTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  description: string
+): Promise<{ completed: boolean; result?: T }> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  
+  const timeoutPromise = new Promise<{ completed: false }>((resolve) => {
+    timeoutId = setTimeout(() => {
+      log("loop", `${description} timed out after ${timeoutMs}ms`);
+      resolve({ completed: false });
+    }, timeoutMs);
+  });
+  
+  try {
+    const result = await Promise.race([
+      promise.then(r => ({ completed: true as const, result: r })),
+      timeoutPromise,
+    ]);
+    
+    if (timeoutId) clearTimeout(timeoutId);
+    return result;
+  } catch (error) {
+    if (timeoutId) clearTimeout(timeoutId);
+    throw error;
+  }
 }
 
 export async function runLoop(
@@ -532,6 +720,10 @@ export async function runLoop(
   callbacks.onAdapterModeChanged?.("sdk");
   
   let server: { url: string; close(): void; attached: boolean } | null = null;
+  
+  // Track active subscription for explicit cleanup
+  let activeSubscriptionController: AbortController | null = null;
+  let activeSessionId: string | null = null;
 
   function createTimeoutlessFetch() {
     return (req: any) => {
@@ -539,6 +731,57 @@ export async function runLoop(
       req.timeout = false;
       return fetch(req);
     };
+  }
+  
+  /**
+   * Cleanup function for graceful shutdown of sessions and server.
+   * Called on completion, error, or abort.
+   */
+  async function cleanupServerAndSessions(reason: string): Promise<void> {
+    log("loop", "Starting cleanup", { reason, hasServer: !!server, hasSession: !!activeSessionId });
+    
+    // Track whether we started the server (not attached to existing)
+    const shouldForceCleanup = server && !server.attached;
+    
+    // 1. Abort active event subscription first
+    if (activeSubscriptionController) {
+      log("loop", "Aborting active event subscription");
+      activeSubscriptionController.abort();
+      activeSubscriptionController = null;
+    }
+    
+    // 2. Give sessions a moment to clean up gracefully (100ms)
+    if (activeSessionId) {
+      log("loop", "Waiting for session cleanup", { sessionId: activeSessionId });
+      await Bun.sleep(100);
+      activeSessionId = null;
+    }
+    
+    // 3. Close the server
+    if (server) {
+      log("loop", "Closing server", { attached: server.attached });
+      try {
+        server.close();
+        log("loop", "Server close called successfully");
+      } catch (error) {
+        log("loop", "Error closing server", { 
+          error: error instanceof Error ? error.message : String(error) 
+        });
+      }
+      
+      // 4. Wait briefly for graceful server shutdown (500ms)
+      await Bun.sleep(500);
+      
+      // 5. On Windows, force terminate any remaining processes (only if we started the server)
+      if (process.platform === "win32" && shouldForceCleanup) {
+        log("loop", "Windows: checking for orphaned opencode processes");
+        await forceTerminateOpencodeProcesses();
+      }
+      
+      server = null;
+    }
+    
+    log("loop", "Cleanup complete", { reason });
   }
 
   try {
@@ -555,16 +798,56 @@ export async function runLoop(
     const client = createOpencodeClient({ baseUrl: server.url, fetch: createTimeoutlessFetch() } as any);
     log("loop", "Client created");
 
+    // Report initial model from options
+    callbacks.onModel?.(options.model);
+    callbacks.onActiveAgent?.({
+      plugin: options.agent || options.model,
+      reason: "primary"
+    });
+
+    // Fetch sandbox info from opencode project info
+    try {
+      if (client.project?.current) {
+        const projectResult = await client.project.current();
+        if (projectResult.data) {
+          const project = projectResult.data as any;
+          const currentDir = process.cwd();
+          const isSandbox = project.sandboxes?.some((s: string) => 
+            s === currentDir || 
+            s.replace(/\\/g, '/') === currentDir.replace(/\\/g, '/')
+          );
+          
+          callbacks.onSandbox?.({
+            enabled: isSandbox,
+            mode: isSandbox ? "sandbox" : "local",
+          });
+          log("loop", "Sandbox info detected", { isSandbox, mode: isSandbox ? "sandbox" : "local" });
+        }
+      } else {
+        log("loop", "Sandbox detection skipped: client.project.current not available in SDK");
+      }
+    } catch (e) {
+      log("loop", "Failed to fetch project info for sandbox detection", { error: String(e) });
+    }
+
     // Initialize iteration counter from persisted state
     let iteration = persistedState.iterationTimes.length;
+    let currentModel = options.model;
+    let isOnFallback = false;
     // Check if pause file exists at startup - if so, start in paused state
+
     // to avoid calling onPause() callback (which would override "ready" status)
     const pauseFileExistsAtStart = await Bun.file(".ralph-pause").exists();
     const pauseState: PauseState = { value: pauseFileExistsAtStart };
     let previousCommitCount = await getCommitsSince(persistedState.initialCommitHash);
     
     // Error tracking for exponential backoff (local, not persisted)
-    let errorCount = 0;
+    const errorHandler = new ErrorHandler(options.errorHandling || {
+      strategy: 'retry',
+      maxRetries: 3,
+      retryDelayMs: 5000,
+      backoffMultiplier: 2,
+    });
     
     log("loop", "Initial state", { iteration, previousCommitCount });
 
@@ -579,16 +862,6 @@ export async function runLoop(
       if (await waitWhilePaused(pauseState, callbacks, signal)) {
         if (signal.aborted) break;
         continue;
-      }
-
-      // Apply error backoff before iteration starts
-      if (errorCount > 0) {
-        const backoffMs = calculateBackoffMs(errorCount);
-        const retryAt = Date.now() + backoffMs;
-        log("loop", "Error backoff", { errorCount, backoffMs, retryAt });
-        callbacks.onBackoff?.(backoffMs, retryAt);
-        await Bun.sleep(backoffMs);
-        callbacks.onBackoffCleared?.();
       }
 
       // Iteration start (10.11)
@@ -619,16 +892,17 @@ export async function runLoop(
         // Skip plan file validation in debug mode - plan file is optional
         if (!options.debug) {
           log("loop", "Parsing plan file");
-          const { done, total } = await parsePlan(options.planFile);
-          log("loop", "Plan parsed", { done, total });
-          callbacks.onTasksUpdated(done, total);
+          const { done, total, error } = await parsePlan(options.planFile);
+          log("loop", "Plan parsed", { done, total, error });
+          callbacks.onTasksUpdated(done, total, error);
         } else {
           log("loop", "Debug mode: skipping plan file validation");
         }
 
         // Parse model and build prompt before session creation
         const promptText = applySteeringContext(await buildPrompt(options));
-        const { providerID, modelID } = parseModel(options.model);
+        callbacks.onPrompt?.(promptText);
+        const { providerID, modelID } = parseModel(currentModel);
 
         // Create session (10.13)
         log("loop", "Creating session...");
@@ -638,6 +912,7 @@ export async function runLoop(
           throw new Error("Failed to create session");
         }
         const sessionId = sessionResult.data.id;
+        activeSessionId = sessionId; // Track for cleanup
         log("loop", "Session created", { sessionId });
 
         // Track whether current session is active (for steering mode guard)
@@ -670,8 +945,20 @@ export async function runLoop(
         });
 
         // Subscribe to events - the SSE connection is established when we start iterating
+        // Use a local AbortController so we can abort the subscription explicitly on completion
         log("loop", "Subscribing to events...");
-        const events = await client.event.subscribe({ signal });
+        activeSubscriptionController = new AbortController();
+        const subscriptionSignal = activeSubscriptionController.signal;
+        
+        // Also abort if parent signal is aborted
+        if (signal.aborted) {
+          activeSubscriptionController.abort();
+        }
+        signal.addEventListener("abort", () => {
+          activeSubscriptionController?.abort();
+        }, { once: true });
+        
+        const events = await client.event.subscribe({ signal: subscriptionSignal });
 
         let promptSent = false;
 
@@ -684,8 +971,18 @@ export async function runLoop(
         const loggedTextByPartId = new Map<string, string>();
         
         for await (const event of events.stream) {
-          await waitWhilePaused(pauseState, callbacks, signal);
-          if (signal.aborted) break;
+          await waitWhilePaused(pauseState, callbacks, signal, {
+            onPause: async () => {
+              if (activeSessionId) {
+                log("loop", "Aborting session due to pause", { sessionId: activeSessionId });
+                // @ts-ignore - abort might not be in the type but is in the API
+                await client.session.abort({ path: { id: activeSessionId } }).catch(e => {
+                  log("loop", "Failed to abort session during pause", { error: String(e) });
+                });
+              }
+            }
+          });
+          if (signal.aborted || subscriptionSignal.aborted) break;
 
           // When SSE connection is established, send the prompt
           // This ensures we don't miss any events due to race conditions
@@ -708,7 +1005,16 @@ export async function runLoop(
             continue;
           }
 
-          if (signal.aborted) break;
+          if (signal.aborted || subscriptionSignal.aborted) break;
+
+          // Detect model change from assistant messages
+          if (event.type === "message.updated") {
+            const info = event.properties.info;
+            if (info.sessionID === sessionId && info.role === "assistant" && info.modelID && info.providerID) {
+              const model = `${info.providerID}/${info.modelID}`;
+              callbacks.onModel?.(model);
+            }
+          }
 
           // Filter events for current session ID
           if (event.type === "message.part.updated") {
@@ -835,6 +1141,8 @@ export async function runLoop(
           if (event.type === "session.idle" && event.properties.sessionID === sessionId) {
             log("loop", "Session idle, breaking event loop");
             sessionActive = false;
+            activeSessionId = null; // Clear tracked session
+            activeSubscriptionController = null; // Clear subscription controller
             callbacks.onSessionEnded?.(sessionId);
             break;
           }
@@ -852,6 +1160,8 @@ export async function runLoop(
             
             log("loop", "Session error", { errorMessage });
             sessionActive = false;
+            activeSessionId = null; // Clear tracked session
+            activeSubscriptionController = null; // Clear subscription controller
             callbacks.onSessionEnded?.(sessionId);
             throw new Error(errorMessage);
           }
@@ -887,7 +1197,7 @@ export async function runLoop(
         callbacks.onDiffUpdated(diffStats.added, diffStats.removed);
 
         // Reset error count on successful iteration
-        errorCount = 0;
+        errorHandler.clearRetryCount();
       } catch (iterationError) {
         // Handle iteration errors with retry logic
         if (signal.aborted) {
@@ -896,26 +1206,82 @@ export async function runLoop(
         }
 
         const errorMessage = iterationError instanceof Error ? iterationError.message : String(iterationError);
-        errorCount++;
-        log("loop", "Error in iteration", { error: errorMessage, errorCount });
-        callbacks.onError(errorMessage);
-        // Continue loop to retry with backoff
+
+        // Detect rate limit and handle fallback
+        const rateLimit = rateLimitDetector.detect({
+          stderr: errorMessage,
+          agentId: options.agent
+        });
+
+        if (rateLimit.isRateLimit && !isOnFallback) {
+          const fallback = options.fallbackAgents?.[currentModel] || getFallbackAgent(currentModel);
+          if (fallback) {
+            log("loop", "Rate limit detected, switching to fallback agent", { 
+              primary: currentModel, 
+              fallback,
+              retryAfter: rateLimit.retryAfter 
+            });
+            
+            const primaryModel = currentModel;
+            currentModel = fallback;
+            isOnFallback = true;
+            
+            // Notify TUI of agent switch
+            callbacks.onModel?.(currentModel);
+            callbacks.onRateLimit?.({
+              limitedAt: Date.now(),
+              primaryAgent: primaryModel,
+              fallbackAgent: currentModel
+            });
+            callbacks.onActiveAgent?.({
+              plugin: options.agent || currentModel,
+              reason: "fallback"
+            });
+            
+            // If we have a retry-after, we might want to wait, but the errorHandler
+            // will handle the delay anyway.
+          }
+        }
+
+        const context: ErrorContext = {
+          iteration,
+          error: iterationError as Error,
+          timestamp: new Date(),
+        };
+        
+        const result = errorHandler.handleError(context);
+        log("loop", "Error handled", { result });
+        
+        if (result.strategy === 'retry' && result.shouldContinue) {
+          callbacks.onError(iterationError instanceof Error ? iterationError.message : String(iterationError));
+          callbacks.onBackoff?.(result.delayMs, Date.now() + result.delayMs);
+          await Bun.sleep(result.delayMs);
+          callbacks.onBackoffCleared?.();
+          // Decrease iteration because we are retrying it
+          iteration--;
+          continue;
+        }
+        
+        const loopErrorMessage = result.message;
+        log("loop", "Error in iteration", { error: loopErrorMessage });
+        callbacks.onError(loopErrorMessage);
+        
+        if (result.strategy === 'abort') {
+          throw iterationError;
+        }
       }
     }
+
     
     log("loop", "Main loop exited", { aborted: signal.aborted });
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    log("loop", "ERROR in runLoop", { error: errorMessage });
-    callbacks.onError(errorMessage);
+    const catchErrorMessage = error instanceof Error ? error.message : String(error);
+    log("loop", "ERROR in runLoop", { error: catchErrorMessage });
+    callbacks.onError(catchErrorMessage);
     throw error;
   } finally {
-    log("loop", "Cleaning up...");
-    if (server) {
-      log("loop", "Closing server");
-      server.close();
-    }
-    log("loop", "Cleanup complete");
+    // Use the cleanup function for proper session and server termination
+    await cleanupServerAndSessions("finally-block");
   }
 }
 
@@ -942,9 +1308,16 @@ async function runPtyLoop(
   }
 
   callbacks.onAdapterModeChanged?.("pty");
+  callbacks.onActiveAgent?.({
+    plugin: options.agent || options.model,
+    reason: "primary"
+  });
 
   let iteration = persistedState.iterationTimes.length;
+  let currentModel = options.model;
+  let isOnFallback = false;
   const pauseFileExistsAtStart = await Bun.file(".ralph-pause").exists();
+
   const pauseState: PauseState = { value: pauseFileExistsAtStart };
   let previousCommitCount = await getCommitsSince(persistedState.initialCommitHash);
   let errorCount = 0;
@@ -992,9 +1365,9 @@ async function runPtyLoop(
 
       if (!options.debug) {
         log("loop", "Parsing plan file");
-        const { done, total } = await parsePlan(options.planFile);
-        log("loop", "Plan parsed", { done, total });
-        callbacks.onTasksUpdated(done, total);
+        const { done, total, error } = await parsePlan(options.planFile);
+        log("loop", "Plan parsed", { done, total, error });
+        callbacks.onTasksUpdated(done, total, error);
       } else {
         log("loop", "Debug mode: skipping plan file validation");
       }
@@ -1003,12 +1376,13 @@ async function runPtyLoop(
 
       const session = await adapter.execute({
         prompt: promptText,
-        model: options.model,
+        model: currentModel,
         cwd: process.cwd(),
         signal,
         cols: process.stdout.columns || 80,
         rows: process.stdout.rows || 24,
       });
+
 
       let sessionActive = true;
       const sessionId = `pty-${Date.now()}`;
@@ -1028,9 +1402,15 @@ async function runPtyLoop(
 
       callbacks.onIdleChanged(true);
       let receivedOutput = false;
+      let accumulatedOutput = "";
 
       for await (const event of session.events) {
-        await waitWhilePaused(pauseState, callbacks, signal);
+        await waitWhilePaused(pauseState, callbacks, signal, {
+          onPause: async () => {
+            log("loop", "Aborting PTY session due to pause");
+            session.abort();
+          }
+        });
         if (signal.aborted) break;
 
         if (event.type === "output") {
@@ -1038,12 +1418,56 @@ async function runPtyLoop(
             receivedOutput = true;
             callbacks.onIdleChanged(false);
           }
-          callbacks.onRawOutput?.(event.data);
+          // Strip ANSI codes to prevent rendering artifacts in TUI
+          const sanitized = stripAnsiCodes(event.data);
+          accumulatedOutput += sanitized;
+          callbacks.onRawOutput?.(sanitized);
         } else if (event.type === "exit") {
           sessionActive = false;
           callbacks.onSessionEnded?.(sessionId);
+          
+          // Check for rate limit on non-zero exit
+          if (event.code !== 0 && event.code !== undefined) {
+            const rateLimit = rateLimitDetector.detect({
+              stderr: accumulatedOutput,
+              exitCode: event.code,
+              agentId: options.agent
+            });
+            
+            if (rateLimit.isRateLimit && !isOnFallback) {
+              const fallback = options.fallbackAgents?.[currentModel] || getFallbackAgent(currentModel);
+              if (fallback) {
+                log("loop", "PTY: Rate limit detected on exit, switching to fallback agent", { 
+                  primary: currentModel, 
+                  fallback,
+                  exitCode: event.code
+                });
+                
+                const primaryModel = currentModel;
+                currentModel = fallback;
+                isOnFallback = true;
+                
+                callbacks.onModel?.(currentModel);
+                callbacks.onRateLimit?.({
+                  limitedAt: Date.now(),
+                  primaryAgent: primaryModel,
+                  fallbackAgent: currentModel
+                });
+                callbacks.onActiveAgent?.({
+                  plugin: options.agent || currentModel,
+                  reason: "fallback"
+                });
+                
+                iteration--;
+                errorCount++;
+                // We need to break out and continue the while loop
+                throw new Error(`Rate limit detected: ${rateLimit.message || "Unknown error"}`);
+              }
+            }
+          }
           break;
         } else if (event.type === "error") {
+
           sessionActive = false;
           callbacks.onSessionEnded?.(sessionId);
           callbacks.onError(event.message);
@@ -1074,10 +1498,50 @@ async function runPtyLoop(
         throw iterationError;
       }
 
-      const errorMessage = iterationError instanceof Error ? iterationError.message : String(iterationError);
+      const ptyErrorMessage = iterationError instanceof Error ? iterationError.message : String(iterationError);
+
+      // Detect rate limit and handle fallback
+      const rateLimit = rateLimitDetector.detect({
+        stderr: ptyErrorMessage,
+        agentId: options.agent
+      });
+
+      if (rateLimit.isRateLimit && !isOnFallback) {
+        const fallback = options.fallbackAgents?.[currentModel] || getFallbackAgent(currentModel);
+        if (fallback) {
+          log("loop", "PTY: Rate limit detected, switching to fallback agent", { 
+            primary: currentModel, 
+            fallback,
+            retryAfter: rateLimit.retryAfter 
+          });
+          
+          const primaryModel = currentModel;
+          currentModel = fallback;
+          isOnFallback = true;
+          
+          // Notify TUI of agent switch
+          callbacks.onModel?.(currentModel);
+          callbacks.onRateLimit?.({
+            limitedAt: Date.now(),
+            primaryAgent: primaryModel,
+            fallbackAgent: currentModel
+          });
+          callbacks.onActiveAgent?.({
+            plugin: options.agent || currentModel,
+            reason: "primary"
+          });
+          
+          // Decrease iteration because we are retrying it
+          iteration--;
+          errorCount++;
+          continue;
+        }
+      }
+
       errorCount++;
-      log("loop", "Error in iteration", { error: errorMessage, errorCount });
-      callbacks.onError(errorMessage);
+      log("loop", "Error in iteration", { error: ptyErrorMessage, errorCount });
+      callbacks.onError(ptyErrorMessage);
     }
+
   }
 }

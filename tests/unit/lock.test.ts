@@ -1,119 +1,85 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { acquireLock, releaseLock, LOCK_FILE } from "../../src/lock";
-import { unlink } from "fs/promises";
+import { SessionLock } from "../../src/lib/lock";
+import { unlinkSync, existsSync, writeFileSync, readFileSync } from "fs";
+import { join } from "path";
 
-async function cleanupLockFile() {
-  try {
-    await unlink(LOCK_FILE);
-  } catch {
-    // Ignore if file doesn't exist
+const LOCK_FILE = ".ralph-lock-test";
+const TEST_CWD = process.cwd();
+const LOCK_PATH = join(TEST_CWD, LOCK_FILE);
+
+function cleanupLockFile() {
+  if (existsSync(LOCK_PATH)) {
+    try {
+      unlinkSync(LOCK_PATH);
+    } catch {
+      // Ignore
+    }
   }
 }
 
-describe("lock file", () => {
-  beforeEach(async () => {
-    // Ensure no lock file exists before each test
-    await cleanupLockFile();
+describe("SessionLock", () => {
+  beforeEach(() => {
+    cleanupLockFile();
   });
 
-  afterEach(async () => {
-    // Clean up lock file after each test
-    await cleanupLockFile();
+  afterEach(() => {
+    cleanupLockFile();
   });
 
-  describe("acquireLock()", () => {
-    it("should return true when no lock exists", async () => {
-      // Ensure no lock file exists
-      const file = Bun.file(LOCK_FILE);
-      const existsBefore = await file.exists();
-      expect(existsBefore).toBe(false);
-
-      // Acquire the lock
-      const result = await acquireLock();
-
-      // Should succeed
-      expect(result).toBe(true);
-
-      // Should create lock file with current PID
-      // Re-create Bun.file reference to avoid caching issues
-      const fileAfter = Bun.file(LOCK_FILE);
-      const existsAfter = await fileAfter.exists();
-      expect(existsAfter).toBe(true);
-
-      const content = await fileAfter.text();
-      expect(content).toBe(String(process.pid));
-    });
-
-    it("should return false when lock held by current process", async () => {
-      // Acquire the lock first
-      const firstResult = await acquireLock();
-      expect(firstResult).toBe(true);
-
-      // Verify lock file contains current PID
-      const file = Bun.file(LOCK_FILE);
-      const content = await file.text();
-      expect(content).toBe(String(process.pid));
-
-      // Try to acquire again - should fail since current process is still running
-      const secondResult = await acquireLock();
-      expect(secondResult).toBe(false);
-
-      // Lock file should still contain the original PID
-      const fileAfter = Bun.file(LOCK_FILE);
-      const contentAfter = await fileAfter.text();
-      expect(contentAfter).toBe(String(process.pid));
-    });
-
-    it("should return true with stale lock (dead PID)", async () => {
-      // Write a lock file with a non-existent PID
-      // Use a very high PID that's unlikely to exist (max PID on most systems)
-      const stalePid = 999999;
-      await Bun.write(LOCK_FILE, String(stalePid));
-
-      // Verify the lock file exists with the stale PID
-      const fileBefore = Bun.file(LOCK_FILE);
-      const contentBefore = await fileBefore.text();
-      expect(contentBefore).toBe(String(stalePid));
-
-      // Acquire the lock - should succeed since the PID is stale
-      const result = await acquireLock();
-      expect(result).toBe(true);
-
-      // Lock file should now contain our PID
-      const fileAfter = Bun.file(LOCK_FILE);
-      const contentAfter = await fileAfter.text();
-      expect(contentAfter).toBe(String(process.pid));
-    });
+  it("should acquire lock when no lock file exists", async () => {
+    const lock = new SessionLock(TEST_CWD, LOCK_FILE);
+    const result = await lock.acquire();
+    
+    expect(result.acquired).toBe(true);
+    expect(existsSync(LOCK_PATH)).toBe(true);
   });
 
-  describe("releaseLock()", () => {
-    it("should remove lock file when it exists", async () => {
-      // Acquire the lock first
-      const acquired = await acquireLock();
-      expect(acquired).toBe(true);
+  it("should fail to acquire lock when valid lock file exists", async () => {
+    const lock1 = new SessionLock(TEST_CWD, LOCK_FILE);
+    await lock1.acquire();
+    
+    const lock2 = new SessionLock(TEST_CWD, LOCK_FILE);
+    const result = await lock2.acquire();
+    
+    expect(result.acquired).toBe(false);
+    expect(result.error).toBe("Another Ralph instance is running");
+    expect(result.existingPid).toBe(process.pid);
+  });
 
-      // Verify lock file exists
-      const fileBefore = Bun.file(LOCK_FILE);
-      const existsBefore = await fileBefore.exists();
-      expect(existsBefore).toBe(true);
+  it("should acquire lock if force is true even if valid lock exists", async () => {
+    const lock1 = new SessionLock(TEST_CWD, LOCK_FILE);
+    await lock1.acquire();
+    
+    const lock2 = new SessionLock(TEST_CWD, LOCK_FILE);
+    const result = await lock2.acquire(true);
+    
+    expect(result.acquired).toBe(true);
+  });
 
-      // Release the lock
-      await releaseLock();
+  it("should release lock properly", async () => {
+    const lock = new SessionLock(TEST_CWD, LOCK_FILE);
+    await lock.acquire();
+    expect(existsSync(LOCK_PATH)).toBe(true);
+    
+    await lock.release();
+    expect(existsSync(LOCK_PATH)).toBe(false);
+  });
 
-      // Verify lock file is deleted
-      const fileAfter = Bun.file(LOCK_FILE);
-      const existsAfter = await fileAfter.exists();
-      expect(existsAfter).toBe(false);
-    });
-
-    it("should not throw when no lock exists", async () => {
-      // Ensure no lock file exists
-      const file = Bun.file(LOCK_FILE);
-      const existsBefore = await file.exists();
-      expect(existsBefore).toBe(false);
-
-      // Release lock should not throw
-      await expect(releaseLock()).resolves.toBeUndefined();
-    });
+  it("should detect stale locks", async () => {
+    // Write a lock file with a non-existent PID
+    const staleData = {
+      pid: 999999,
+      sessionId: "stale-session",
+      startedAt: new Date().toISOString(),
+      version: 1
+    };
+    writeFileSync(LOCK_PATH, JSON.stringify(staleData));
+    
+    const lock = new SessionLock(TEST_CWD, LOCK_FILE);
+    const result = await lock.acquire();
+    
+    expect(result.acquired).toBe(true);
+    const newData = JSON.parse(readFileSync(LOCK_PATH, 'utf-8'));
+    expect(newData.pid).toBe(process.pid);
   });
 });

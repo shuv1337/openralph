@@ -1,5 +1,5 @@
 import type { PtyProcess, PtyOptions } from "./types";
-import { log } from "../util/log";
+import { log } from "../lib/log";
 
 export function spawnPty(command: string[], options: PtyOptions = {}): PtyProcess {
   const { cols = 80, rows = 24, cwd = process.cwd(), env = {} } = options;
@@ -56,6 +56,8 @@ export function spawnPty(command: string[], options: PtyOptions = {}): PtyProces
     }
   };
 
+  const decoder = new TextDecoder();
+
   try {
     proc = Bun.spawn(command, {
       cwd,
@@ -64,23 +66,30 @@ export function spawnPty(command: string[], options: PtyOptions = {}): PtyProces
         cols,
         rows,
         data: (_terminal, data) => {
-          pushData(data);
+          // data is Uint8Array, decode to string
+          pushData(decoder.decode(data, { stream: true }));
         },
       },
     });
     terminal = proc.terminal ?? null;
   } catch (error) {
-    log("pty", "terminal spawn failed, falling back to legacy PTY", { error: String(error) });
+    log("pty", "terminal spawn failed, falling back to pipe mode", { error: String(error) });
+    // Fallback to pipe mode (not PTY, but better than nothing)
     proc = Bun.spawn(command, {
       cwd,
       env: combinedEnv,
-      stdin: "pty",
+      stdin: "pipe",
       stdout: "pipe",
       stderr: "pipe",
-    } as Parameters<typeof Bun.spawn>[1]);
+    });
 
-    readStream(proc.stdout, "stdout");
-    readStream(proc.stderr, "stderr");
+    // Only read streams if they are ReadableStream (not number)
+    if (proc.stdout && typeof proc.stdout !== "number") {
+      readStream(proc.stdout, "stdout");
+    }
+    if (proc.stderr && typeof proc.stderr !== "number") {
+      readStream(proc.stderr, "stderr");
+    }
   }
 
   proc.exited.then((exitCode) => {
@@ -95,8 +104,8 @@ export function spawnPty(command: string[], options: PtyOptions = {}): PtyProces
       try {
         if (terminal) {
           terminal.write(data);
-        } else {
-          proc.stdin?.write(data);
+        } else if (proc.stdin && typeof proc.stdin !== "number") {
+          proc.stdin.write(data);
         }
       } catch (error) {
         log("pty", "stdin write error", { error: String(error) });
