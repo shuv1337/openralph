@@ -1,6 +1,6 @@
 <div align="center">
 
-# openralph
+# OpenRalph
 
 [![npm version](https://img.shields.io/npm/v/openralph?style=flat-square&color=blue)](https://www.npmjs.com/package/openralph)
 [![npm downloads](https://img.shields.io/npm/dm/openralph?style=flat-square&color=green)](https://www.npmjs.com/package/openralph)
@@ -133,6 +133,7 @@ ralph init --from plan.md          # convert unstructured plan to PRD JSON
 | `--yes` | `false` | Auto-confirm prompts |
 | `--auto-reset` | `true` | Auto-reset when no TTY prompt |
 | `--force` | `false` | Force acquire session lock |
+| `--fallback-agent` | (none) | Fallback agent mapping (format: `primary:fallback`) |
 
 ### Init Subcommand
 
@@ -389,7 +390,7 @@ Contributions are welcome! Feel free to submit a Pull Request.
 ## Credits
 
 - Thanks to [Geoffrey Huntley](https://ghuntley.com) for the original Ralph Wiggum loop concept
-- openralph is a fork of [`opencode-ralph`](https://github.com/hona/opencode-ralph) — huge thanks to [Hona](https://github.com/hona) for the original implementation
+- OpenRalph is a fork of [`opencode-ralph`](https://github.com/hona/opencode-ralph) — huge thanks to [Hona](https://github.com/hona) for the original implementation
 
 ---
 

@@ -1,6 +1,6 @@
 import { useTheme } from "../context/ThemeContext";
 import { layout, statusIndicators } from "./tui-theme";
-import type { RalphStatus } from "./tui-types";
+import type { RalphStatus, SandboxConfig } from "./tui-types";
 
 export type ProgressDashboardProps = {
   status: RalphStatus;
@@ -9,6 +9,10 @@ export type ProgressDashboardProps = {
   planName?: string;
   currentTaskId?: string;
   currentTaskTitle?: string;
+  /** Current model in provider/model format (e.g., "anthropic/claude-opus-4") */
+  currentModel?: string;
+  /** Sandbox configuration for display */
+  sandboxConfig?: SandboxConfig;
 };
 
 function truncateText(text: string, maxWidth: number): string {
@@ -38,6 +42,19 @@ function getStatusDisplay(status: RalphStatus, theme: ReturnType<typeof useTheme
   }
 }
 
+/**
+ * Get the sandbox display string.
+ */
+function getSandboxDisplay(sandboxConfig: SandboxConfig | undefined): string | null {
+  if (!sandboxConfig?.enabled) return "Disabled";
+  
+  const mode = sandboxConfig.mode ?? "auto";
+  if (mode === "off") return "Off";
+  
+  const networkSuffix = sandboxConfig.network === false ? " (no-net)" : "";
+  return `${mode}${networkSuffix}`;
+}
+
 export function ProgressDashboard(props: ProgressDashboardProps) {
   const { theme } = useTheme();
   const t = () => theme();
@@ -51,6 +68,8 @@ export function ProgressDashboard(props: ProgressDashboardProps) {
   };
 
   const planLabel = () => (props.planName ? truncateText(props.planName, 30) : null);
+
+  const sandboxLabel = () => getSandboxDisplay(props.sandboxConfig);
 
   return (
     <box
@@ -70,6 +89,13 @@ export function ProgressDashboard(props: ProgressDashboardProps) {
           {planLabel() && <text fg={t().primary}>{planLabel()}</text>}
         </box>
         <box flexDirection="row" gap={1}>
+          {props.currentModel && (
+            <>
+              <text fg={t().textMuted}>Model:</text>
+              <text fg={t().accent}> {props.currentModel}</text>
+              <text fg={t().textMuted}> │</text>
+            </>
+          )}
           {props.agentName && (
             <>
               <text fg={t().textMuted}>Agent:</text>
@@ -85,13 +111,21 @@ export function ProgressDashboard(props: ProgressDashboardProps) {
         </box>
       </box>
 
-      {taskDisplay() && (
+      <box flexDirection="row" justifyContent="space-between" marginTop={0}>
         <box flexDirection="row" gap={1}>
-          <text fg={t().textMuted}>Working on:</text>
-          {props.currentTaskId && <text fg={t().secondary}>{props.currentTaskId}</text>}
-          <text fg={t().text}> {taskDisplay()}</text>
+          {taskDisplay() && (
+            <>
+              <text fg={t().textMuted}>Working on:</text>
+              {props.currentTaskId && <text fg={t().secondary}>{props.currentTaskId}</text>}
+              <text fg={t().text}> {taskDisplay()}</text>
+            </>
+          )}
         </box>
-      )}
+        <box flexDirection="row" gap={1}>
+          <text fg={t().textMuted}>Sandbox:</text>
+          <text fg={props.sandboxConfig?.enabled ? t().success : t().textMuted}> {sandboxLabel()}</text>
+        </box>
+      </box>
     </box>
   );
 }

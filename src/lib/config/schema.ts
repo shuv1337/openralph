@@ -19,6 +19,13 @@ export const UISchema = z.object({
   compactMode: z.boolean().default(false),
 });
 
+/**
+ * Fallback agent configuration for rate limit handling.
+ * Maps primary agent/model names to their fallback alternatives.
+ * Users configure their own mappings - no defaults provided.
+ */
+export const FallbackAgentsSchema = z.record(z.string(), z.string()).default({});
+
 export const ConfigSchema = z.object({
   // Core settings
   model: z.string().default('opencode/claude-opus-4-5'),
@@ -65,9 +72,14 @@ export const ConfigSchema = z.object({
     showProgressDashboard: true,
     compactMode: false,
   }),
+
+  // Rate limit fallback agents
+  // Maps primary agent/model to fallback when rate limited
+  fallbackAgents: FallbackAgentsSchema,
 }).strict();
 
 export type UserConfig = z.infer<typeof ConfigSchema>;
 export type ErrorHandlingConfig = z.infer<typeof ErrorHandlingSchema>;
 export type SessionConfig = z.infer<typeof SessionSchema>;
 export type UIConfig = z.infer<typeof UISchema>;
+export type FallbackAgentsConfig = z.infer<typeof FallbackAgentsSchema>;

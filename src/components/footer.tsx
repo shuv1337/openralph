@@ -2,6 +2,7 @@ import { useTheme } from "../context/ThemeContext";
 import { formatDuration, formatNumber } from "../lib/time";
 import type { TokenUsage } from "../state";
 import { keyboardShortcuts, layout } from "./tui-theme";
+import type { RateLimitState } from "./tui-types";
 
 export type FooterProps = {
   commits: number;
@@ -11,6 +12,10 @@ export type FooterProps = {
   linesRemoved: number;
   sessionActive?: boolean;
   tokens?: TokenUsage;
+  /** Current adapter mode - SDK (Claude SDK) or PTY (pseudo-terminal) */
+  adapterMode?: "sdk" | "pty";
+  /** Rate limit state for warning display */
+  rateLimitState?: RateLimitState;
 };
 
 export function Footer(props: FooterProps) {
@@ -22,7 +27,17 @@ export function Footer(props: FooterProps) {
     if (props.sessionActive) {
       list.splice(3, 0, { key: ":", description: "Steer" });
     }
+    // Show rate limit warning in shortcuts if rate limited
+    if (props.rateLimitState?.limitedAt) {
+      list.push({ key: "⏳", description: "Rate Limited" });
+    }
     return list;
+  };
+
+  // Mode indicator: [SDK] or [PTY]
+  const modeIndicator = () => {
+    if (!props.adapterMode) return null;
+    return props.adapterMode === "pty" ? "[PTY]" : "[SDK]";
   };
 
   const shortcutText = () =>
@@ -74,9 +89,6 @@ export function Footer(props: FooterProps) {
         <text fg={t().textMuted}> │ </text>
         <text fg={t().textMuted}>Commits:</text>
         <text fg={t().primary}>{props.commits}</text>
-        <text fg={t().textMuted}> │ </text>
-        <text fg={t().textMuted}>Time:</text>
-        <text fg={t().text}>{formatDuration(props.elapsed)}</text>
       </box>
     </box>
   );
