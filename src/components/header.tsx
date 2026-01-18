@@ -13,6 +13,7 @@ export type HeaderProps = {
   totalTasks: number;
   elapsedMs: number;
   eta: number | null;
+  planError?: string;
   selectedTask?: UiTask | null;
   agentName?: string;
   adapterName?: string;
@@ -169,16 +170,22 @@ export function Header(props: HeaderProps) {
         </box>
 
         <box flexDirection="row" gap={1} alignItems="center">
-          <MiniProgressBar
-            completed={props.tasksComplete}
-            total={props.totalTasks}
-            width={8}
-            filledColor={t().success}
-            emptyColor={t().textMuted}
-          />
-          <text fg={t().text}>
-            {props.tasksComplete}/{props.totalTasks} ({percentage()}%)
-          </text>
+          {props.planError ? (
+            <text fg={t().error}>⚠️ Plan Error</text>
+          ) : (
+            <>
+              <MiniProgressBar
+                completed={props.tasksComplete}
+                total={props.totalTasks}
+                width={8}
+                filledColor={t().success}
+                emptyColor={t().textMuted}
+              />
+              <text fg={t().text}>
+                {props.tasksComplete}/{props.totalTasks} ({percentage()}%)
+              </text>
+            </>
+          )}
         </box>
 
         <box flexDirection="row" gap={1} alignItems="center">

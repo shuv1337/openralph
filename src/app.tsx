@@ -22,7 +22,7 @@ import type { LoopState, LoopOptions, PersistedState } from "./state";
 import { detectInstalledTerminals, launchTerminal, getAttachCommand as getAttachCmdFromTerminal, type KnownTerminal } from "./lib/terminal-launcher";
 import { copyToClipboard, detectClipboardTool } from "./lib/clipboard";
 import { loadConfig, setPreferredTerminal } from "./lib/config";
-import { parsePlanTasks, type Task } from "./plan";
+import { parsePlan, parsePlanTasks, type Task } from "./plan";
 import { layout } from "./components/tui-theme";
 import type { DetailsViewMode, UiTask } from "./components/tui-types";
 import { isWindowsTerminal, isLegacyConsole } from "./lib/windows-console";
@@ -272,22 +272,15 @@ export function App(props: AppProps) {
       return;
     }
 
+    const { done, total, error } = await parsePlan(props.options.planFile);
     const parsed = await parsePlanTasks(props.options.planFile);
     setTasks(parsed);
 
-    const total = parsed.length;
-    let done = 0;
-    for (const task of parsed) {
-      if (task.done) {
-        done++;
-      }
-    }
-
     setStateAndRender((prev) => {
-      if (prev.tasksComplete === done && prev.totalTasks === total) {
+      if (prev.tasksComplete === done && prev.totalTasks === total && prev.planError === error) {
         return prev;
       }
-      return { ...prev, tasksComplete: done, totalTasks: total };
+      return { ...prev, tasksComplete: done, totalTasks: total, planError: error };
     });
 
     const loopState = loopStore.state();
@@ -1426,6 +1419,7 @@ function AppContent(props: AppContentProps) {
           iteration={props.state().iteration}
           tasksComplete={props.state().tasksComplete}
           totalTasks={props.state().totalTasks}
+          planError={props.state().planError}
           elapsedMs={props.loopStats.elapsedMs()}
           eta={props.loopStats.etaMs()}
           debug={props.options.debug}
