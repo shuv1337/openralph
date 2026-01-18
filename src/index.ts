@@ -1011,12 +1011,13 @@ async function main() {
         // Trigger render when iteration ends
         stateSetters.requestRender();
       },
-      onTasksUpdated: (done, total) => {
-        log("main", "onTasksUpdated", { done, total });
+      onTasksUpdated: (done, total, error) => {
+        log("main", "onTasksUpdated", { done, total, error });
         stateSetters.setState((prev) => ({
           ...prev,
           tasksComplete: done,
           totalTasks: total,
+          planError: error,
         }));
       },
       onCommitsUpdated: (commits) => {

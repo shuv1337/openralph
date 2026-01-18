@@ -472,7 +472,7 @@ export type LoopCallbacks = {
     duration: number,
     commits: number,
   ) => void;
-  onTasksUpdated: (done: number, total: number) => void;
+  onTasksUpdated: (done: number, total: number, error?: string) => void;
   onCommitsUpdated: (commits: number) => void;
   onDiffUpdated: (added: number, removed: number) => void;
   onPause: () => void;
@@ -836,9 +836,9 @@ export async function runLoop(
         // Skip plan file validation in debug mode - plan file is optional
         if (!options.debug) {
           log("loop", "Parsing plan file");
-          const { done, total } = await parsePlan(options.planFile);
-          log("loop", "Plan parsed", { done, total });
-          callbacks.onTasksUpdated(done, total);
+          const { done, total, error } = await parsePlan(options.planFile);
+          log("loop", "Plan parsed", { done, total, error });
+          callbacks.onTasksUpdated(done, total, error);
         } else {
           log("loop", "Debug mode: skipping plan file validation");
         }
@@ -1244,9 +1244,9 @@ async function runPtyLoop(
 
       if (!options.debug) {
         log("loop", "Parsing plan file");
-        const { done, total } = await parsePlan(options.planFile);
-        log("loop", "Plan parsed", { done, total });
-        callbacks.onTasksUpdated(done, total);
+        const { done, total, error } = await parsePlan(options.planFile);
+        log("loop", "Plan parsed", { done, total, error });
+        callbacks.onTasksUpdated(done, total, error);
       } else {
         log("loop", "Debug mode: skipping plan file validation");
       }

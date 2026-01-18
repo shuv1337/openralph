@@ -1,3 +1,5 @@
+import { log } from "./lib/log";
+
 /**
  * Plan file parser for openralph
  */
@@ -21,6 +23,7 @@ export type PlanValidation = {
 export type PlanProgress = {
   done: number;
   total: number;
+  error?: string;
 };
 
 /**
@@ -49,11 +52,18 @@ function normalizePrdItems(data: unknown): PrdItem[] | null {
     items = (data as { items: unknown[] }).items;
   }
 
-  if (!items) return null;
+  if (!items) {
+    log("plan", "No items array found in PRD data");
+    return null;
+  }
 
   const normalized: PrdItem[] = [];
-  for (const item of items) {
-    if (!item || typeof item !== "object") return null;
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    if (!item || typeof item !== "object") {
+      log("plan", `Invalid item at index ${i}`, { item });
+      return null;
+    }
     const candidate = item as Record<string, unknown>;
     const description =
       typeof candidate.description === "string"
@@ -61,14 +71,21 @@ function normalizePrdItems(data: unknown): PrdItem[] | null {
         : typeof candidate.title === "string"
           ? candidate.title
           : null;
-    if (!description) return null;
-    if (typeof candidate.passes !== "boolean") return null;
+    if (!description) {
+      log("plan", `Missing description at index ${i}`, { item });
+      return null;
+    }
+    if (typeof candidate.passes !== "boolean") {
+      log("plan", `Missing/invalid 'passes' boolean at index ${i}`, { item });
+      return null;
+    }
 
     const steps = candidate.steps;
     if (
       steps !== undefined &&
       (!Array.isArray(steps) || steps.some((step) => typeof step !== "string"))
     ) {
+      log("plan", `Invalid 'steps' array at index ${i}`, { item });
       return null;
     }
 
@@ -91,7 +108,12 @@ export function parsePrdItems(content: string): PrdItem[] | null {
   try {
     const parsed = JSON.parse(trimmed) as unknown;
     return normalizePrdItems(parsed);
-  } catch {
+  } catch (error) {
+    log("plan", "Failed to parse PRD JSON", { 
+      error: error instanceof Error ? error.message : String(error),
+      contentLength: trimmed.length,
+      preview: trimmed.slice(0, 100)
+    });
     return null;
   }
 }
@@ -173,12 +195,32 @@ export async function parsePlan(path: string): Promise<PlanProgress> {
 
   const content = await file.text();
 
-  const prdItems = parsePrdItems(content);
-  if (prdItems) {
-    const done = prdItems.filter((item) => item.passes).length;
-    return { done, total: prdItems.length };
+  try {
+    const prdItems = parsePrdItems(content);
+    if (prdItems) {
+      const done = prdItems.filter((item) => item.passes).length;
+      return { done, total: prdItems.length };
+    }
+  } catch (err) {
+    return { 
+      done: 0, 
+      total: 0, 
+      error: err instanceof Error ? err.message : String(err) 
+    };
   }
 
+  // If content is present but parsePrdItems returned null, check if it was intended to be JSON
+  const trimmed = content.trim();
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+    // It looks like JSON but failed to parse/normalize
+    return {
+      done: 0,
+      total: 0,
+      error: "Invalid PRD JSON format. Check for syntax errors."
+    };
+  }
+
+  // Fallback to markdown parsing
   // Remove content inside fenced code blocks (```...```) before counting
   // This prevents counting checkboxes that appear in code examples
   const contentWithoutCodeBlocks = content.replace(/```[\s\S]*?```/g, "");

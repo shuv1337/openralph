@@ -27,6 +27,7 @@ export type LoopState = {
   linesRemoved: number;
   events: ToolEvent[];
   error?: string;
+  planError?: string;
   isIdle: boolean; // True when waiting for LLM response, false when tool events are arriving
   adapterMode?: "sdk" | "pty";
   terminalBuffer?: string;
