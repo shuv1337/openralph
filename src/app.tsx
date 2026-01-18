@@ -21,7 +21,7 @@ import { keymap, matchesKeybind } from "./lib/keymap";
 import type { LoopState, LoopOptions, PersistedState } from "./state";
 import { detectInstalledTerminals, launchTerminal, getAttachCommand as getAttachCmdFromTerminal, type KnownTerminal } from "./lib/terminal-launcher";
 import { copyToClipboard, detectClipboardTool } from "./lib/clipboard";
-import { loadConfig, setPreferredTerminal } from "./lib/config";
+import { loadConfig, setPreferredTerminal, getAllFallbackAgents, setFallbackAgent, removeFallbackAgent } from "./lib/config";
 import { parsePlan, parsePlanTasks, type Task } from "./plan";
 import { layout } from "./components/tui-theme";
 import type { DetailsViewMode, UiTask } from "./components/tui-types";
@@ -852,6 +852,18 @@ function AppContent(props: AppContentProps) {
         },
       },
     ]);
+
+    // Register "Configure fallback agents" command
+    command.register("fallbackAgents", () => [
+      {
+        title: "Configure fallback agents",
+        value: "fallbackAgents",
+        description: "Set fallback models for rate limit handling",
+        onSelect: () => {
+          queueMicrotask(() => showFallbackAgentDialog());
+        },
+      },
+    ]);
   });
 
   /**
@@ -937,6 +949,113 @@ function AppContent(props: AppContentProps) {
       />
     ));
     props.renderer.requestRender?.();
+  };
+
+  /**
+   * Show fallback agent configuration dialog.
+   * Allows users to add, view, or remove fallback agent mappings for rate limit handling.
+   */
+  const showFallbackAgentDialog = () => {
+    const currentMappings = getAllFallbackAgents();
+    const mappingEntries = Object.entries(currentMappings);
+
+    // Build options list: existing mappings + "Add new" option
+    const options: SelectOption[] = [
+      {
+        title: "➕ Add new fallback mapping",
+        value: "__add_new__",
+        description: "Configure a new primary → fallback agent mapping",
+      },
+      ...mappingEntries.map(([primary, fallback]) => ({
+        title: `${primary} → ${fallback}`,
+        value: primary,
+        description: "Select to remove this mapping",
+      })),
+    ];
+
+    if (mappingEntries.length === 0) {
+      options.push({
+        title: "(No fallback agents configured)",
+        value: "__none__",
+        description: "Add mappings to enable automatic fallback on rate limits",
+        disabled: true,
+      });
+    }
+
+    dialog.show(() => (
+      <DialogSelect
+        title="Configure Fallback Agents"
+        placeholder="Select to add or remove mappings..."
+        options={options}
+        onSelect={(opt) => {
+          if (opt.value === "__add_new__") {
+            // Show prompt for primary agent
+            queueMicrotask(() => showAddFallbackDialog());
+          } else if (opt.value !== "__none__") {
+            // Confirm removal
+            const fallback = currentMappings[opt.value];
+            dialog.show(() => (
+              <DialogAlert
+                title="Remove Fallback Mapping?"
+                message={`Remove mapping:\n${opt.value} → ${fallback}\n\nThis agent will no longer have an automatic fallback.`}
+                variant="warning"
+                onDismiss={() => {
+                  removeFallbackAgent(opt.value);
+                  log("app", "Fallback agent removed", { primary: opt.value });
+                  toast.show({
+                    variant: "success",
+                    message: `Removed fallback for ${opt.value}`,
+                  });
+                }}
+              />
+            ));
+          }
+        }}
+        onCancel={() => {}}
+        borderColor={t().info}
+      />
+    ));
+  };
+
+  /**
+   * Show dialog to add a new fallback agent mapping.
+   */
+  const showAddFallbackDialog = () => {
+    dialog.show(() => (
+      <DialogPrompt
+        title="Enter primary agent/model name (e.g., claude-opus-4):"
+        placeholder="claude-opus-4"
+        onSubmit={(primaryAgent) => {
+          if (!primaryAgent.trim()) {
+            toast.show({ variant: "error", message: "Primary agent name required" });
+            return;
+          }
+          // Now prompt for fallback agent
+          queueMicrotask(() => {
+            dialog.show(() => (
+              <DialogPrompt
+                title={`Enter fallback agent for "${primaryAgent}":`}
+                placeholder="claude-sonnet-4-20250501"
+                onSubmit={(fallbackAgent) => {
+                  if (!fallbackAgent.trim()) {
+                    toast.show({ variant: "error", message: "Fallback agent name required" });
+                    return;
+                  }
+                  setFallbackAgent(primaryAgent.trim(), fallbackAgent.trim());
+                  log("app", "Fallback agent added", { primary: primaryAgent, fallback: fallbackAgent });
+                  toast.show({
+                    variant: "success",
+                    message: `Added: ${primaryAgent} → ${fallbackAgent}`,
+                  });
+                }}
+                onCancel={() => {}}
+              />
+            ));
+          });
+        }}
+        onCancel={() => {}}
+      />
+    ));
   };
 
   /**
@@ -1426,6 +1545,10 @@ function AppContent(props: AppContentProps) {
           selectedTask={currentTask()}
           agentName={props.options.agent}
           adapterName={props.options.adapter ?? props.state().adapterMode}
+          currentModel={props.state().currentModel}
+          sandboxConfig={props.state().sandboxConfig}
+          activeAgentState={props.state().activeAgentState}
+          rateLimitState={props.state().rateLimitState}
         />
         {showDashboard() && (
           <ProgressDashboard
@@ -1435,6 +1558,8 @@ function AppContent(props: AppContentProps) {
             planName={props.options.planFile}
             currentTaskId={currentTask()?.id}
             currentTaskTitle={currentTask()?.title}
+            currentModel={props.state().currentModel}
+            sandboxConfig={props.state().sandboxConfig}
           />
         )}
       <box
@@ -1473,7 +1598,10 @@ function AppContent(props: AppContentProps) {
         linesRemoved={props.state().linesRemoved}
         sessionActive={!!props.state().sessionId || props.state().adapterMode === "pty"}
         tokens={props.state().tokens}
+        adapterMode={props.state().adapterMode}
+        rateLimitState={props.state().rateLimitState}
       />
+
       <PausedOverlay visible={props.state().status === "paused"} />
       <SteeringOverlay
         visible={props.commandMode()}

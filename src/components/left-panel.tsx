@@ -2,8 +2,12 @@ import { For, Show, createEffect, createMemo } from "solid-js";
 import type { ScrollBoxRenderable } from "@opentui/core";
 import { useTheme } from "../context/ThemeContext";
 import { renderMarkdownBold, stripMarkdownBold } from "../lib/text-utils";
-import { taskStatusIndicators } from "./tui-theme";
+import { taskStatusIndicators, getTaskStatusColor } from "./tui-theme";
 import type { TaskStatus, UiTask } from "./tui-types";
+
+// =====================================================
+// LEFT PANEL PROPS WITH HIERARCHY SUPPORT
+// =====================================================
 
 export type LeftPanelProps = {
   tasks: UiTask[];
@@ -18,6 +22,31 @@ export type LeftPanelProps = {
   /** Callback when a task is clicked/selected */
   onSelect?: (index: number) => void;
 };
+
+// =====================================================
+// HIERARCHY SUPPORT UTILITIES
+// =====================================================
+
+/**
+ * Build a map of parent IDs to determine indentation levels.
+ * Tasks with a parentId that exists in the task list are indented.
+ */
+function buildIndentMap(tasks: UiTask[]): Map<string, number> {
+  // Create a set of all task IDs for quick lookup
+  const taskIds = new Set(tasks.map((t) => t.id));
+  const indentMap = new Map<string, number>();
+
+  for (const task of tasks) {
+    // If task has a parent that exists in our list, it's indented
+    if (task.parentId && taskIds.has(task.parentId)) {
+      indentMap.set(task.id, 1);
+    } else {
+      indentMap.set(task.id, 0);
+    }
+  }
+
+  return indentMap;
+}
 
 function truncateText(text: string, maxWidth: number): string {
   // Strip markdown to get actual display length
@@ -47,37 +76,69 @@ function truncateText(text: string, maxWidth: number): string {
 // Fixed width for task ID column alignment
 const ID_COLUMN_WIDTH = 10;
 
-function getStatusColor(status: TaskStatus, theme: ReturnType<typeof useTheme>["theme"]): string {
+/**
+ * Get status color from theme using the new semantic color mappings.
+ * Falls back to textMuted for unknown statuses.
+ */
+function getStatusColorFromTheme(status: TaskStatus, theme: ReturnType<typeof useTheme>["theme"]): string {
   const t = theme();
+  // Use getTaskStatusColor for hex colors, but prefer theme colors when available
+  // This allows theme overrides while still supporting the full status set
   switch (status) {
     case "done":
       return t.success;      // green
+    case "active":
+      return t.primary;      // blue (currently working)
     case "actionable":
-      return t.primary;      // blue
+      return t.primary;      // blue (ready to work)
     case "pending":
-    default:
       return t.textMuted;    // gray
+    case "blocked":
+      return t.error;        // red
+    case "error":
+      return t.error;        // red
+    case "closed":
+      return t.textMuted;    // greyed out
+    default:
+      return t.textMuted;
   }
 }
 
+// =====================================================
+// ENHANCED TASK ROW WITH HIERARCHY AND CLOSED STYLING
+// =====================================================
+
+/**
+ * Single task item row with hierarchy support.
+ * Shows: [indent][status indicator] [task ID] [task title (truncated)]
+ * Closed tasks are displayed with greyed-out styling to distinguish historical work.
+ * Child tasks (those with a parentId) are indented to show hierarchy.
+ */
 function TaskRow(props: {
   task: UiTask;
   isSelected: boolean;
   maxWidth: number;
   index: number;
+  /** Indentation level (0 = root, 1 = child of root) */
+  indentLevel?: number;
 }) {
   const { theme } = useTheme();
   const t = () => theme();
 
-  // Color-coded left-margin status indicator
-  const statusColor = () => getStatusColor(props.task.status, theme);
-  const statusIndicator = () => taskStatusIndicators[props.task.status];
+  // Color-coded left-margin status indicator using new semantic colors
+  const statusColor = () => getStatusColorFromTheme(props.task.status, theme);
+  const statusIndicator = () => taskStatusIndicators[props.task.status] || taskStatusIndicators.pending;
+
+  // NEW: Indentation (2 spaces per level)
+  const indentLevel = () => props.indentLevel ?? 0;
+  const indent = () => "  ".repeat(indentLevel());
+  const indentWidth = () => indentLevel() * 2;
 
   // Fixed-width ID column for alignment
   const paddedId = () => props.task.id.padEnd(ID_COLUMN_WIDTH).slice(0, ID_COLUMN_WIDTH);
 
-  // Title width accounts for: status indicator (1) + space (1) + ID (10) + space (1) + padding (2)
-  const titleWidth = () => Math.max(10, props.maxWidth - ID_COLUMN_WIDTH - 5);
+  // Title width accounts for: indent + status indicator (1) + space (1) + ID (10) + space (1) + padding (2)
+  const titleWidth = () => Math.max(10, props.maxWidth - ID_COLUMN_WIDTH - 5 - indentWidth());
   const truncatedTitle = () => truncateText(props.task.title, titleWidth());
 
   // Row background: zebra striping with selection override
@@ -86,10 +147,13 @@ function TaskRow(props: {
     return props.index % 2 === 0 ? t().background : t().backgroundPanel;
   };
 
-  // Text colors: inverted for selection, muted for done tasks
+  // NEW: Check if task is closed (greyed out styling)
+  const isClosed = () => props.task.status === "closed";
+
+  // Text colors: inverted for selection, muted for done/closed tasks
   const textColor = () => {
     if (props.isSelected) return t().background;
-    if (props.task.status === "done") return t().textMuted;
+    if (props.task.status === "done" || isClosed()) return t().textMuted;
     return t().text;
   };
 
@@ -99,8 +163,10 @@ function TaskRow(props: {
     return t().accent;
   };
 
+  // ID color: muted for closed tasks
   const idColor = () => {
     if (props.isSelected) return t().background;
+    if (isClosed()) return t().textMuted;
     return t().textMuted;
   };
 
@@ -120,6 +186,8 @@ function TaskRow(props: {
       paddingRight={1}
       backgroundColor={rowBg()}
     >
+      {/* NEW: Indentation for hierarchical display */}
+      <text fg={t().textMuted}>{indent()}</text>
       <text fg={statusColor()}>{statusIndicator()}</text>
       <text fg={idColor()}> {paddedId()}</text>
       <text fg={textColor()}> </text>
@@ -134,6 +202,9 @@ export function LeftPanel(props: LeftPanelProps) {
   let scrollboxRef: ScrollBoxRenderable | undefined;
 
   const maxRowWidth = () => Math.max(20, props.width - 4);
+
+  // NEW: Build indentation map for hierarchical display
+  const indentMap = createMemo(() => buildIndentMap(props.tasks));
 
   // Compute the empty state message based on context
   // Uses createMemo to ensure proper reactivity when task state changes
@@ -240,6 +311,7 @@ export function LeftPanel(props: LeftPanelProps) {
                   isSelected={index() === props.selectedIndex}
                   maxWidth={maxRowWidth()}
                   index={index()}
+                  indentLevel={indentMap().get(task.id) ?? 0}
                 />
               </box>
             )}
