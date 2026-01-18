@@ -1,7 +1,7 @@
 import { For, Show, createEffect, createMemo } from "solid-js";
 import type { ScrollBoxRenderable } from "@opentui/core";
 import { useTheme } from "../context/ThemeContext";
-import { RenderMarkdownSegments, stripMarkdownBold, stripMarkdownLinks } from "../lib/text-utils";
+import { RenderMarkdownSegments, stripMarkdownBold, stripMarkdownLinks, getCompactTag } from "../lib/text-utils";
 import { taskStatusIndicators, getTaskStatusColor } from "./tui-theme";
 import type { TaskStatus, UiTask } from "./tui-types";
 
@@ -64,14 +64,12 @@ function truncateText(text: string, maxWidth: number): string {
   return plainText.slice(0, targetLength) + "…";
 }
 
-// Fixed width for task ID column alignment in compact mode
-const ID_COLUMN_WIDTH = 10;
 // Fixed gutter width for dense mode (indent + status + ID + tags)
 const GUTTER_WIDTH = 24;
 
 /**
- * Split text into lines that fit within a specific width.
- * Strictly preserves all non-whitespace characters to prevent data loss.
+ * Abbreviate a tag/category to its first initial in brackets.
+ * e.g. "functional" -> "[F]"
  */
 function wrapText(text: string, width: number): string[] {
   if (width <= 0) return [text];
@@ -187,16 +185,20 @@ function TaskRow(props: {
   const indent = () => "  ".repeat(indentLevel());
   const indentWidth = () => indentLevel() * 2;
 
-  const paddedId = () => props.task.id.padEnd(ID_COLUMN_WIDTH).slice(0, ID_COLUMN_WIDTH);
-  
+  const abbreviatedTag = () => getCompactTag(props.task.category);
+
   // Title width calculation depends on mode
   const titleWidth = () => {
+    const internalPadding = 2; // paddingLeft(1) + paddingRight(1) in TaskRow box
     if (props.compactMode) {
-      // Compact: Indent + Status(1) + space(1) + ID(10) + space(1) + title
-      return Math.max(10, props.maxWidth - ID_COLUMN_WIDTH - 5 - indentWidth());
+      // Compact: Indent + Status(1) + space(1) + ID + (space(1) + [T])? + space(1) + title
+      const idLen = props.task.id.length;
+      const tagLen = abbreviatedTag().length;
+      const prefixLen = indentWidth() + 1 + 1 + idLen + (tagLen > 0 ? 1 + tagLen : 0) + 1;
+      return Math.max(10, props.maxWidth - prefixLen - internalPadding);
     } else {
       // Dense: Indent + Title (indented by 2 more spaces)
-      return Math.max(10, props.maxWidth - 4 - indentWidth());
+      return Math.max(10, props.maxWidth - 4 - indentWidth() - internalPadding);
     }
   };
 
@@ -314,7 +316,10 @@ function TaskRow(props: {
         <text>
           <span style={{ fg: t().textMuted }}>{indent()}</span>
           <span style={{ fg: statusColor() }}>{statusIndicator()}</span>
-          <span style={{ fg: idColor() }}> {paddedId()}</span>
+          <span style={{ fg: idColor() }}> {props.task.id}</span>
+          <Show when={abbreviatedTag()}>
+            <span style={{ fg: categoryColor() }}> {abbreviatedTag()}</span>
+          </Show>
           <span style={{ fg: textColor() }}> </span>
           <RenderMarkdownSegments
             text={truncateText(stripMarkdownLinks(props.task.title), titleWidth())}
@@ -333,7 +338,7 @@ export function LeftPanel(props: LeftPanelProps) {
   const t = () => theme();
   let scrollboxRef: ScrollBoxRenderable | undefined;
 
-  const maxRowWidth = () => Math.max(20, props.width - 4);
+  const maxRowWidth = () => Math.max(20, props.width - 2);
 
   const indentMap = createMemo(() => buildIndentMap(props.tasks));
 
@@ -353,7 +358,7 @@ export function LeftPanel(props: LeftPanelProps) {
   const itemHeights = createMemo(() => 
     props.tasks.map(task => {
       const indentLevel = indentMap().get(task.id) ?? 0;
-      const maxWidth = Math.max(20, props.width - 4);
+      const maxWidth = maxRowWidth();
       const availableContentWidth = Math.max(10, maxWidth - (GUTTER_WIDTH + indentLevel * 2));
       return calculateTaskHeight(task, availableContentWidth, !!props.compactMode);
     })
@@ -405,10 +410,8 @@ export function LeftPanel(props: LeftPanelProps) {
   return (
     <box
       title="Tasks"
-      flexGrow={1}
-      flexShrink={1}
-      minWidth={50}
-      maxWidth={70}
+      width={props.width}
+      flexShrink={0}
       flexDirection="column"
       backgroundColor={t().background}
       border
