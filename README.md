@@ -165,6 +165,31 @@ READ all of {plan} and {progress}. Pick ONE task with passes=false (prefer highe
 
 </details>
 
+### Converting Plans to PRDs
+
+When running `ralph init --from plan.md`, OpenRalph intelligently converts your markdown notes into a structured `prd.json`. 
+
+#### Best Practice `plan.md` Format:
+To get the most out of the conversion, use this format in your markdown plans:
+
+```markdown
+# My Project Plan
+
+- [x] [setup] Initialize repository and project structure
+- [x] [ui] Design the landing page hero section
+- [ ] [feat] Implement user authentication logic
+- [ ] [feat] Add database persistence for tasks
+- [ ] Plain list items are also picked up
+* Asterisk lists work too
+1. Numbered lists are also supported
+```
+
+**Why this works:**
+- **Status Syncing**: Ralph detects `[x]` as completed (`passes: true`) and `[ ]` as pending (`passes: false`).
+- **Category Tags**: Placing a bracketed tag like `[ui]` or `[feat]` at the start of a task automatically sets the `category` field in the generated PRD.
+- **Deduplication**: Ralph automatically removes duplicate tasks during the conversion process.
+- **Universal Support**: Works across Windows, macOS, and Linux with any standard terminal.
+
 ---
 
 ## Configuration
