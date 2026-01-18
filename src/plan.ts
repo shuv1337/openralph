@@ -38,7 +38,12 @@ export type Task = {
   text: string;
   /** Whether the task is completed */
   done: boolean;
+  /** Task priority (0-4) */
+  priority?: number;
+  /** Task category */
+  category?: string;
 };
+
 
 // Regex to match markdown checkbox items
 // Captures: optional leading whitespace, checkbox state, and task text
@@ -170,13 +175,19 @@ export async function parsePlanTasks(path: string): Promise<Task[]> {
   const content = await file.text();
   const prdItems = parsePrdItems(content);
   if (prdItems) {
-    return prdItems.map((item, index) => ({
-      id: `prd-${index + 1}`,
-      line: index + 1,
-      text: item.category ? `[${item.category}] ${item.description}` : item.description,
-      done: item.passes,
-    }));
+    return prdItems.map((item, index) => {
+      // Map category/priority from PRD item if available
+      // Note: PrdItem currently only has category and description
+      return {
+        id: `prd-${index + 1}`,
+        line: index + 1,
+        text: item.description,
+        done: item.passes,
+        category: item.category,
+      };
+    });
   }
+
 
   return parseMarkdownTasks(content);
 }

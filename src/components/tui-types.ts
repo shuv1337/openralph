@@ -63,6 +63,8 @@ export type UiTask = {
   parentId?: string;
   /** Task priority (0-4, where 0 is Critical and 4 is Backlog) */
   priority?: number;
+  /** Task category for grouping/tags */
+  category?: string;
   /** Acceptance criteria items parsed from description */
   acceptanceCriteria?: string;
 };
