@@ -8,3 +8,4 @@ dist/
 
 .reference/
 CONTEXT/
+package-lock.json
