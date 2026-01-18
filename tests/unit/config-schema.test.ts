@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { ConfigSchema } from "../../src/lib/config/schema";
+import { ConfigSchema, FallbackAgentsSchema } from "../../src/lib/config/schema";
 
 describe("ConfigSchema", () => {
   it("should validate a correct configuration", () => {
@@ -60,6 +60,68 @@ describe("ConfigSchema", () => {
       expect(result.data.errorHandling.maxRetries).toBe(5);
       // Verify other defaults in the nested object
       expect(result.data.errorHandling.retryDelayMs).toBe(5000);
+    }
+  });
+});
+
+describe("FallbackAgentsSchema", () => {
+  it("should default to empty object (no hardcoded fallbacks)", () => {
+    const result = FallbackAgentsSchema.safeParse(undefined);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).toEqual({});
+    }
+  });
+
+  it("should accept valid string-to-string mappings", () => {
+    const mappings = {
+      "claude-opus-4": "claude-sonnet-4",
+      "gpt-4o": "gpt-4o-mini",
+    };
+    const result = FallbackAgentsSchema.safeParse(mappings);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data["claude-opus-4"]).toBe("claude-sonnet-4");
+      expect(result.data["gpt-4o"]).toBe("gpt-4o-mini");
+    }
+  });
+
+  it("should reject non-string values", () => {
+    const invalidMappings = {
+      "claude-opus-4": 123,
+    };
+    const result = FallbackAgentsSchema.safeParse(invalidMappings);
+    expect(result.success).toBe(false);
+  });
+
+  it("should allow empty mappings", () => {
+    const result = FallbackAgentsSchema.safeParse({});
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(Object.keys(result.data).length).toBe(0);
+    }
+  });
+});
+
+describe("ConfigSchema with fallbackAgents", () => {
+  it("should include fallbackAgents in full config", () => {
+    const config = {
+      fallbackAgents: {
+        "claude-opus-4": "claude-sonnet-4",
+      }
+    };
+    const result = ConfigSchema.safeParse(config);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.fallbackAgents["claude-opus-4"]).toBe("claude-sonnet-4");
+    }
+  });
+
+  it("should default fallbackAgents to empty object in full config", () => {
+    const result = ConfigSchema.safeParse({});
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.fallbackAgents).toEqual({});
     }
   });
 });

@@ -9,12 +9,14 @@ const mockSessionCreate = mock(() =>
   Promise.resolve({ data: { id: "test-session-123" } })
 );
 const mockSessionPrompt = mock(() => Promise.resolve());
+const mockSessionAbort = mock(() => Promise.resolve({ success: true }));
 const mockCreateOpencodeServer = mock(() =>
   Promise.resolve({
     url: "http://localhost:4190",
     close: mock(() => {}),
   })
 );
+
 
 // Mock event stream that simulates a complete iteration
 function createMockEventStream() {
@@ -85,7 +87,9 @@ mock.module("@opencode-ai/sdk", () => ({
     session: {
       create: mockSessionCreate,
       prompt: mockSessionPrompt,
+      abort: mockSessionAbort,
     },
+
     event: {
       subscribe: mockEventSubscribe,
     },
@@ -185,8 +189,11 @@ describe("ralph flow integration", () => {
     // Reset mocks
     mockSessionCreate.mockClear();
     mockSessionPrompt.mockClear();
+    mockSessionAbort.mockClear();
     mockEventSubscribe.mockClear();
+    mockEventSubscribe.mockImplementation(() => Promise.resolve(createMockEventStream()));
     mockCreateOpencodeServer.mockClear();
+
   });
 
   afterEach(async () => {
@@ -624,6 +631,60 @@ describe("ralph flow integration", () => {
     expect(persistedState.startTime).toBeGreaterThan(0);
     expect(persistedState.initialCommitHash).toBe("abc123");
     expect(persistedState.planFile).toBe(testPlanFile);
+  });
+
+  it("should call session.abort when pausing mid-iteration in SDK mode", async () => {
+    const options: LoopOptions = {
+      planFile: testPlanFile,
+      model: "anthropic/claude-sonnet-4",
+      prompt: "Test prompt for {plan}",
+    };
+
+    const persistedState: PersistedState = {
+      startTime: Date.now(),
+      initialCommitHash: "abc123",
+      iterationTimes: [],
+      planFile: testPlanFile,
+    };
+
+    const callbacks = createTestCallbacks();
+    const controller = new AbortController();
+
+    cleanupFiles.push(".ralph-pause");
+    cleanupFiles.push(".ralph-done");
+
+    // Mock event stream that never ends naturally
+    mockEventSubscribe.mockImplementation(() => Promise.resolve({
+      stream: (async function* () {
+        yield { type: "server.connected", properties: {} };
+        // Wait forever (until aborted)
+        while (true) {
+          await Bun.sleep(100);
+          yield { type: "heartbeat", properties: {} };
+        }
+      })(),
+    }));
+
+    const loopPromise = runLoop(options, persistedState, callbacks, controller.signal);
+
+    // Give it time to start and create session
+    await Bun.sleep(200);
+    expect(mockSessionCreate).toHaveBeenCalled();
+
+    // Trigger pause by creating file
+    await Bun.write(".ralph-pause", "");
+    
+    // Give it time to detect pause and call abort
+    await Bun.sleep(1100); // Poll interval is 1000ms
+
+    expect(mockSessionAbort).toHaveBeenCalled();
+    expect(mockSessionAbort).toHaveBeenCalledWith(expect.objectContaining({
+      path: { id: "test-session-123" }
+    }));
+
+    // Cleanup
+    controller.abort();
+    await loopPromise.catch(() => {});
   });
 
   it("should not call createOpencodeServer when serverUrl is provided", async () => {
