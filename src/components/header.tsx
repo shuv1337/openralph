@@ -1,7 +1,7 @@
 import { createMemo } from "solid-js";
 import { useTerminalDimensions } from "@opentui/solid";
 import { useTheme } from "../context/ThemeContext";
-import { renderMarkdownBold, stripMarkdownBold } from "../lib/text-utils";
+import { renderMarkdownBold, stripMarkdownBold, truncateText } from "../lib/text-utils";
 import { formatElapsedTime, layout, statusIndicators } from "./tui-theme";
 import type { RalphStatus, UiTask, RateLimitState, ActiveAgentState, SandboxConfig } from "./tui-types";
 import { formatEta } from "../lib/time";
@@ -37,33 +37,10 @@ export type HeaderProps = {
   maxIterations?: number;
 };
 
-function truncateText(text: string, maxWidth: number): string {
-  // Strip markdown to get actual display length
-  const plainText = stripMarkdownBold(text);
-  if (plainText.length <= maxWidth) return text;
-  if (maxWidth <= 3) return plainText.slice(0, maxWidth);
-  
-  // Need to truncate - work with plain text for length calculation
-  const targetLength = maxWidth - 1; // Leave room for ellipsis
-  let plainIndex = 0;
-  let originalIndex = 0;
-  
-  while (plainIndex < targetLength && originalIndex < text.length) {
-    // Skip ** markers
-    if (text.slice(originalIndex, originalIndex + 2) === "**") {
-      originalIndex += 2;
-      continue;
-    }
-    plainIndex++;
-    originalIndex++;
-  }
-  
-  return stripMarkdownBold(text.slice(0, originalIndex)) + "…";
-}
-
 // =====================================================
 // STATUS DISPLAY HELPERS
 // =====================================================
+
 
 /**
  * Get compact status display for the current Ralph status.
@@ -238,14 +215,46 @@ export function Header(props: HeaderProps) {
     agentDisplay().statusLine ? 2 : layout.header.height
   );
 
-  // Simple task title width calculation:
-  // Terminal width minus fixed elements (right side ~90 chars, left side ~25 chars)
-  // Clamped between 20 (minimum readable) and 120 (maximum useful)
-  const taskMaxWidth = createMemo(() => {
-    const termWidth = terminalDimensions().width;
-    const fixedWidth = 115; // Approximate: right side (90) + left side (25)
-    const available = termWidth - fixedWidth;
-    return Math.max(20, Math.min(available, 120));
+  // NEW: Calculate dynamic layout metrics for truncation and hiding
+  const layoutMetrics = createMemo(() => {
+    const width = terminalDimensions().width;
+    
+    // 1. Calculate essential widths of fixed components
+    // Left: "◆ OpenRalph " (12) + "│ " (2) + "[DEBUG] " (8) + Indicator (2) + Label
+    const statusPart = getStatusDisplay(props.status, theme);
+    const leftEssential = 12 + (props.debug ? 8 : 0) + 2 + 2 + statusPart.label.length;
+    
+    // Right: Progress (8+1+15) + Iteration (15) + Time (10) + ETA (10) + gaps (6)
+    const rightEssential = 24 + 15 + 10 + 10 + 6;
+    
+    const available = width - leftEssential - rightEssential - 6; // safety margin + paddings
+    
+    // 2. Define priority hiding based on terminal width
+    const hideEta = width < 110;
+    const hideTime = width < 100;
+    const hideIteration = width < 90;
+    const hideProgressText = width < 80;
+    const hideStatusLabel = width < 70;
+    
+    // 3. Distribute available space between Task Title and Metadata (Agent/Model)
+    // Priority: Task Title gets 60%, Metadata gets 40%
+    // Metadata includes Agent, Model, Tracker, Sandbox
+    const taskWeight = 0.6;
+    const metaWeight = 0.4;
+    
+    const taskMax = Math.max(10, Math.floor(available * taskWeight));
+    const metaMax = Math.max(10, Math.floor(available * metaWeight));
+
+    return {
+      taskMaxWidth: Math.min(taskMax, 100),
+      metadataMaxWidth: Math.min(metaMax, 40),
+      hideEta,
+      hideTime,
+      hideIteration,
+      hideStatusLabel,
+      hideProgressText,
+      isCompact: width < 120
+    };
   });
 
   const taskDisplay = createMemo(() => {
@@ -253,7 +262,7 @@ export function Header(props: HeaderProps) {
     // Show task for more status states (including new ones)
     const showTaskStatuses = ["running", "paused", "executing", "selecting"];
     if (!showTaskStatuses.includes(props.status)) return null;
-    return truncateText(props.selectedTask.title, taskMaxWidth());
+    return truncateText(props.selectedTask.title, layoutMetrics().taskMaxWidth);
   });
 
   const taskLabel = createMemo(() => taskDisplay());
@@ -297,7 +306,9 @@ export function Header(props: HeaderProps) {
             </>
           )}
           <text fg={statusDisplay().color}>{statusDisplay().indicator}</text>
-          <text fg={statusDisplay().color}> {statusDisplay().label}</text>
+          {!layoutMetrics().hideStatusLabel && (
+            <text fg={statusDisplay().color}> {statusDisplay().label}</text>
+          )}
           {taskLabel() && (
             <>
               <text fg={t().textMuted}> → </text>
@@ -306,12 +317,12 @@ export function Header(props: HeaderProps) {
           )}
         </box>
 
-        <box flexDirection="row" gap={1} alignItems="center">
+        <box flexDirection="row" gap={1} alignItems="center" flexShrink={0}>
           {/* Agent display with rate limit icon */}
           {showAgentDisplay() && (
             <text fg={agentDisplay().color}>
               {agentDisplay().showRateLimitIcon && <span>⏳ </span>}
-              {agentDisplay().displayName}
+              {truncateText(agentDisplay().displayName, layoutMetrics().metadataMaxWidth)}
             </text>
           )}
 
@@ -322,25 +333,35 @@ export function Header(props: HeaderProps) {
 
           {/* NEW: Model display */}
           {modelDisplay() && (
-            <text fg={t().accent}>{modelDisplay()!.display}</text>
+            <text fg={t().accent}>
+              {truncateText(modelDisplay()!.display, layoutMetrics().metadataMaxWidth)}
+            </text>
           )}
 
           {/* NEW: Tracker name */}
-          {props.trackerName && (
+          {props.trackerName && !layoutMetrics().isCompact && (
             <text fg={t().secondary}>{props.trackerName}</text>
           )}
 
           {/* NEW: Sandbox indicator */}
-          {sandboxDisplay() && (
+          {sandboxDisplay() && !layoutMetrics().isCompact && (
             <text fg={t().info}>🔒 {sandboxDisplay()}</text>
           )}
 
           {/* Fallback to original agent/adapter display if new props not used */}
           {!agentDisplay().displayName && (props.agentName || props.adapterName) && (
             <box flexDirection="row" gap={1}>
-              {props.agentName && <text fg={t().secondary}>{props.agentName}</text>}
+              {props.agentName && (
+                <text fg={t().secondary}>
+                  {truncateText(props.agentName, layoutMetrics().metadataMaxWidth)}
+                </text>
+              )}
               {props.agentName && props.adapterName && <text fg={t().textMuted}>/</text>}
-              {props.adapterName && <text fg={t().primary}>{props.adapterName}</text>}
+              {props.adapterName && (
+                <text fg={t().primary}>
+                  {truncateText(props.adapterName, layoutMetrics().metadataMaxWidth)}
+                </text>
+              )}
             </box>
           )}
 
@@ -353,27 +374,35 @@ export function Header(props: HeaderProps) {
                 <MiniProgressBar
                   completed={props.tasksComplete}
                   total={props.totalTasks}
-                  width={8}
+                  width={layoutMetrics().isCompact ? 4 : 8}
                   filledColor={t().success}
                   emptyColor={t().textMuted}
                 />
-                <text fg={t().text}>
-                  {props.tasksComplete}/{props.totalTasks} ({percentage()}%)
-                </text>
+                {!layoutMetrics().hideProgressText && (
+                  <text fg={t().text}>
+                    {props.tasksComplete}/{props.totalTasks} ({percentage()}%)
+                  </text>
+                )}
               </>
             )}
           </box>
 
           {/* NEW: Enhanced iteration counter */}
-          <text fg={t().textMuted}>{iterationDisplay()}</text>
+          {!layoutMetrics().hideIteration && (
+            <text fg={t().textMuted}>{iterationDisplay()}</text>
+          )}
 
           {/* Time and ETA */}
-          <box flexDirection="row" gap={1} alignItems="center">
-            <text fg={t().textMuted}>⏱</text>
-            <text fg={t().text}>{formattedTime()}</text>
-          </box>
+          {!layoutMetrics().hideTime && (
+            <box flexDirection="row" gap={1} alignItems="center">
+              <text fg={t().textMuted}>⏱</text>
+              <text fg={t().text}>{formattedTime()}</text>
+            </box>
+          )}
 
-          <text fg={t().textMuted}>{formattedEta()}</text>
+          {!layoutMetrics().hideEta && (
+            <text fg={t().textMuted}>{formattedEta()}</text>
+          )}
         </box>
       </box>
 
@@ -390,7 +419,7 @@ export function Header(props: HeaderProps) {
         >
           <text fg={t().warning}>
             <span>⏳ </span>
-            <span>{agentDisplay().statusLine}</span>
+            <span>{truncateText(agentDisplay().statusLine!, terminalDimensions().width - 6)}</span>
           </text>
         </box>
       )}
