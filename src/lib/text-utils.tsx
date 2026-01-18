@@ -8,6 +8,27 @@ import { stripAnsiCodes, type FormattedSegment } from "./ansi";
 
 // Re-export pure functions for convenience
 export { parseMarkdownSegments, stripMarkdownBold, hasMarkdownBold, stripMarkdownLinks, getCompactTag } from "./markdown";
+import { stripMarkdownBold } from "./markdown";
+
+/**
+ * Truncate text to fit within a given width, adding ellipsis if needed.
+ * Strips markdown bold markers for length calculation and returns plain text if truncated.
+ * 
+ * @param text - The text to truncate
+ * @param maxWidth - Maximum allowed width
+ * @returns Truncated text with ellipsis if necessary
+ */
+export function truncateText(text: string, maxWidth: number): string {
+  if (!text) return "";
+  
+  // Strip markdown to get actual display length
+  const plainText = stripMarkdownBold(text);
+  if (plainText.length <= maxWidth) return text;
+  if (maxWidth <= 1) return "…".slice(0, maxWidth);
+  if (maxWidth <= 3) return plainText.slice(0, maxWidth);
+  
+  return plainText.slice(0, maxWidth - 1) + "…";
+}
 export { stripAnsiCodes, hasAnsiCodes, sanitizeForDisplay, parseToSegments } from "./ansi";
 export type { FormattedSegment } from "./ansi";
 export type { TextSegment } from "./markdown";
