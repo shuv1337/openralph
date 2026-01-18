@@ -13,6 +13,39 @@ export type { FormattedSegment } from "./ansi";
 export type { TextSegment } from "./markdown";
 
 /**
+ * Render text segments as JSX spans/bold elements without a container.
+ * Useful for embedding in an existing <text> element.
+ */
+export function RenderMarkdownSegments(props: {
+  text: string;
+  normalColor: string;
+  boldColor: string;
+  tagColor?: string;
+}): JSX.Element {
+  const segments = parseMarkdownSegments(props.text);
+  const effectiveTagColor = props.tagColor || props.boldColor;
+
+  if (segments.length === 0) {
+    return <span style={{ fg: props.normalColor }}>{props.text}</span>;
+  }
+
+  return (
+    <>
+      {segments.map((segment) => {
+        if (segment.tag) {
+          return <span style={{ fg: effectiveTagColor }}>{segment.text}</span>;
+        }
+        if (segment.bold) {
+          // OpenTUI's <b> component with style prop for bold text
+          return <b style={{ fg: props.boldColor }}>{segment.text}</b>;
+        }
+        return <span style={{ fg: props.normalColor }}>{segment.text}</span>;
+      })}
+    </>
+  );
+}
+
+/**
  * Parse text containing **bold** markdown syntax and [tag] patterns and render as a single JSX text element.
  * 
  * OpenTUI Rendering Note:
@@ -32,27 +65,14 @@ export function renderMarkdownBold(
   boldColor: string,
   tagColor?: string
 ): JSX.Element {
-  const segments = parseMarkdownSegments(text);
-  
-  if (segments.length === 0) {
-    return <text fg={normalColor}>{text}</text>;
-  }
-
-  const effectiveTagColor = tagColor || boldColor;
-
   return (
     <text fg={normalColor}>
-      {segments.map((segment) => {
-        if (segment.tag) {
-          // @ts-ignore - OpenTUI span supports fg but types might be missing it
-          return <span fg={effectiveTagColor}>{segment.text}</span>;
-        }
-        if (segment.bold) {
-          // @ts-ignore - OpenTUI b supports fg but types might be missing it
-          return <b fg={boldColor}>{segment.text}</b>;
-        }
-        return <span>{segment.text}</span>;
-      })}
+      <RenderMarkdownSegments
+        text={text}
+        normalColor={normalColor}
+        boldColor={boldColor}
+        tagColor={tagColor}
+      />
     </text>
   );
 }

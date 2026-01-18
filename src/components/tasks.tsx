@@ -1,5 +1,6 @@
 import { For } from "solid-js";
 import { useTheme } from "../context/ThemeContext";
+import { renderMarkdownBold } from "../lib/text-utils";
 import type { Task } from "../plan";
 
 export type TasksProps = {
@@ -21,11 +22,13 @@ function TaskItem(props: { task: Task }) {
   const checkbox = () => (props.task.done ? "[✓]" : "[ ]");
   const textColor = () => (props.task.done ? t().textMuted : t().text);
   const checkColor = () => (props.task.done ? t().success : t().textMuted);
+  const boldColor = () => (props.task.done ? t().textMuted : t().accent);
 
   return (
     <box width="100%" flexDirection="row">
       <text fg={checkColor()}>{checkbox()}</text>
-      <text fg={textColor()}> {props.task.text}</text>
+      <text fg={textColor()}> </text>
+      {renderMarkdownBold(props.task.text, textColor(), boldColor())}
     </box>
   );
 }

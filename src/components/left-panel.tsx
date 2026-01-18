@@ -1,7 +1,7 @@
 import { For, Show, createEffect, createMemo } from "solid-js";
 import type { ScrollBoxRenderable } from "@opentui/core";
 import { useTheme } from "../context/ThemeContext";
-import { renderMarkdownBold, stripMarkdownBold } from "../lib/text-utils";
+import { RenderMarkdownSegments, stripMarkdownBold } from "../lib/text-utils";
 import { taskStatusIndicators, getTaskStatusColor } from "./tui-theme";
 import type { TaskStatus, UiTask } from "./tui-types";
 
@@ -49,28 +49,16 @@ function buildIndentMap(tasks: UiTask[]): Map<string, number> {
 }
 
 function truncateText(text: string, maxWidth: number): string {
-  // Strip markdown to get actual display length
+  // Use plain text for length calculation to handle markdown properly
   const plainText = stripMarkdownBold(text);
   if (plainText.length <= maxWidth) return text;
+  
   if (maxWidth <= 3) return plainText.slice(0, maxWidth);
   
-  // Need to truncate - work with plain text for length calculation
-  // but preserve markdown in the truncated portion
+  // For simplicity and to avoid broken markdown markers, 
+  // we return truncated plain text when truncation is necessary.
   const targetLength = maxWidth - 1; // Leave room for ellipsis
-  let plainIndex = 0;
-  let originalIndex = 0;
-  
-  while (plainIndex < targetLength && originalIndex < text.length) {
-    // Skip ** markers
-    if (text.slice(originalIndex, originalIndex + 2) === "**") {
-      originalIndex += 2;
-      continue;
-    }
-    plainIndex++;
-    originalIndex++;
-  }
-  
-  return stripMarkdownBold(text.slice(0, originalIndex)) + "…";
+  return plainText.slice(0, targetLength) + "…";
 }
 
 // Fixed width for task ID column alignment
@@ -82,8 +70,6 @@ const ID_COLUMN_WIDTH = 10;
  */
 function getStatusColorFromTheme(status: TaskStatus, theme: ReturnType<typeof useTheme>["theme"]): string {
   const t = theme();
-  // Use getTaskStatusColor for hex colors, but prefer theme colors when available
-  // This allows theme overrides while still supporting the full status set
   switch (status) {
     case "done":
       return t.success;      // green
@@ -111,8 +97,6 @@ function getStatusColorFromTheme(status: TaskStatus, theme: ReturnType<typeof us
 /**
  * Single task item row with hierarchy support.
  * Shows: [indent][status indicator] [task ID] [task title (truncated)]
- * Closed tasks are displayed with greyed-out styling to distinguish historical work.
- * Child tasks (those with a parentId) are indented to show hierarchy.
  */
 function TaskRow(props: {
   task: UiTask;
@@ -121,77 +105,67 @@ function TaskRow(props: {
   index: number;
   /** Indentation level (0 = root, 1 = child of root) */
   indentLevel?: number;
+  onSelect?: () => void;
 }) {
   const { theme } = useTheme();
   const t = () => theme();
 
-  // Color-coded left-margin status indicator using new semantic colors
   const statusColor = () => getStatusColorFromTheme(props.task.status, theme);
   const statusIndicator = () => taskStatusIndicators[props.task.status] || taskStatusIndicators.pending;
 
-  // NEW: Indentation (2 spaces per level)
   const indentLevel = () => props.indentLevel ?? 0;
   const indent = () => "  ".repeat(indentLevel());
   const indentWidth = () => indentLevel() * 2;
 
-  // Fixed-width ID column for alignment
   const paddedId = () => props.task.id.padEnd(ID_COLUMN_WIDTH).slice(0, ID_COLUMN_WIDTH);
-
-  // Title width accounts for: indent + status indicator (1) + space (1) + ID (10) + space (1) + padding (2)
   const titleWidth = () => Math.max(10, props.maxWidth - ID_COLUMN_WIDTH - 5 - indentWidth());
-  const truncatedTitle = () => truncateText(props.task.title, titleWidth());
 
-  // Row background: zebra striping with selection override
   const rowBg = () => {
     if (props.isSelected) return t().primary;
     return props.index % 2 === 0 ? t().background : t().backgroundPanel;
   };
 
-  // NEW: Check if task is closed (greyed out styling)
   const isClosed = () => props.task.status === "closed";
 
-  // Text colors: inverted for selection, muted for done/closed tasks
   const textColor = () => {
     if (props.isSelected) return t().background;
     if (props.task.status === "done" || isClosed()) return t().textMuted;
     return t().text;
   };
 
-  // Bold/emphasis color: same as text when selected, accent otherwise
   const boldColor = () => {
     if (props.isSelected) return t().background;
     return t().accent;
   };
 
-  // ID color: muted for closed tasks
   const idColor = () => {
     if (props.isSelected) return t().background;
-    if (isClosed()) return t().textMuted;
     return t().textMuted;
   };
-
-  // Render title with markdown bold parsing
-  const renderedTitle = () => renderMarkdownBold(
-    truncatedTitle(), 
-    textColor(), 
-    boldColor(),
-    t().secondary // Use secondary color for [tags]
-  );
 
   return (
     <box
       width="100%"
+      height={1}
       flexDirection="row"
       paddingLeft={1}
       paddingRight={1}
       backgroundColor={rowBg()}
+      onMouseDown={props.onSelect}
     >
-      {/* NEW: Indentation for hierarchical display */}
-      <text fg={t().textMuted}>{indent()}</text>
-      <text fg={statusColor()}>{statusIndicator()}</text>
-      <text fg={idColor()}> {paddedId()}</text>
-      <text fg={textColor()}> </text>
-      {renderedTitle()}
+      <text>
+        {/* Render all elements inline in a single text component for perfect layout alignment */}
+        <span style={{ fg: t().textMuted }}>{indent()}</span>
+        <span style={{ fg: statusColor() }}>{statusIndicator()}</span>
+        <span style={{ fg: idColor() }}> {paddedId()}</span>
+        <span style={{ fg: textColor() }}> </span>
+        <RenderMarkdownSegments
+          text={truncateText(props.task.title, titleWidth())}
+          normalColor={textColor()}
+          boldColor={boldColor()}
+          tagColor={t().secondary}
+        />
+      </text>
     </box>
   );
 }
@@ -203,59 +177,59 @@ export function LeftPanel(props: LeftPanelProps) {
 
   const maxRowWidth = () => Math.max(20, props.width - 4);
 
-  // NEW: Build indentation map for hierarchical display
   const indentMap = createMemo(() => buildIndentMap(props.tasks));
 
-  // Compute the empty state message based on context
-  // Uses createMemo to ensure proper reactivity when task state changes
   const emptyMessage = createMemo(() => {
     const totalTasks = props.totalTasks ?? 0;
     const showingCompleted = props.showingCompleted ?? false;
     
-    // If there are total tasks but none visible, all are completed (and hidden)
     if (totalTasks > 0 && !showingCompleted) {
       return `All ${totalTasks} tasks completed! 🎉`;
     }
     
-    // No tasks at all
     return "No tasks loaded";
   });
 
-  // Track the task list length for reactivity - forces re-render when it changes
   const taskCount = createMemo(() => props.tasks.length);
 
   createEffect(() => {
     const selectedIndex = props.selectedIndex;
     const count = taskCount();
-    // Access height to create reactive dependency - effect re-runs on terminal resize
     const _height = props.height;
 
     if (!scrollboxRef || count === 0) {
-      // Reset scroll position when task list becomes empty
       if (scrollboxRef) {
         scrollboxRef.scrollTop = 0;
       }
       return;
     }
 
-    // Direct Sync Scrolling:
-    // The scroll position is directly tied to the selection index.
-    // This provides immediate, 1-to-1 visual feedback for every navigation step,
-    // ensuring the selected task is always at the top of the visible list
-    // (except when reaching the end of the task list).
+    // Jump Scrolling Logic:
+    // Instead of scrolling 1-to-1, we implement a significant "jump" when the selection 
+    // hits the edges of the visible viewport. This fulfills the user's request for 
+    // an increased jump (2x dashboard height = 12 lines) and ensures rows align perfectly.
     const updateScroll = () => {
       if (!scrollboxRef) return;
 
-      const nextTop = selectedIndex;
+      const currentTop = scrollboxRef.scrollTop;
+      const dashboardHeight = 6; 
+      const jumpAmount = 2 * dashboardHeight; // 12 lines
+      
+      // Estimated viewport height (Total panel height minus title and borders)
+      const viewportHeight = Math.max(5, props.height - 2);
+      const bottomThreshold = viewportHeight - 2;
 
-      if (nextTop !== scrollboxRef.scrollTop) {
-        scrollboxRef.scrollTop = nextTop;
-        // Force immediate render to keep scrollbar in perfect sync
+      if (selectedIndex >= currentTop + bottomThreshold) {
+        // Selection hit bottom edge -> jump down by jumpAmount
+        scrollboxRef.scrollTop = currentTop + jumpAmount;
+        scrollboxRef.requestRender();
+      } else if (selectedIndex < currentTop + 1) {
+        // Selection hit top edge -> jump up by jumpAmount
+        scrollboxRef.scrollTop = Math.max(0, currentTop - jumpAmount);
         scrollboxRef.requestRender();
       }
     };
 
-    // Use queueMicrotask to defer until after Solid's render cycle
     queueMicrotask(() => updateScroll());
   });
 
@@ -291,7 +265,6 @@ export function LeftPanel(props: LeftPanelProps) {
           },
         }}
       >
-        {/* Use keyed rendering to force complete re-render when task count changes */}
         <Show
           when={taskCount() > 0}
           fallback={
@@ -305,15 +278,14 @@ export function LeftPanel(props: LeftPanelProps) {
         >
           <For each={props.tasks}>
             {(task, index) => (
-              <box onMouseDown={() => props.onSelect?.(index())}>
-                <TaskRow
-                  task={task}
-                  isSelected={index() === props.selectedIndex}
-                  maxWidth={maxRowWidth()}
-                  index={index()}
-                  indentLevel={indentMap().get(task.id) ?? 0}
-                />
-              </box>
+              <TaskRow
+                task={task}
+                isSelected={index() === props.selectedIndex}
+                maxWidth={maxRowWidth()}
+                index={index()}
+                indentLevel={indentMap().get(task.id) ?? 0}
+                onSelect={() => props.onSelect?.(index())}
+              />
             )}
           </For>
         </Show>
