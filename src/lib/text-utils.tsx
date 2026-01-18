@@ -2,7 +2,7 @@
  * Text parsing utilities for markdown-style formatting in the TUI.
  * Re-exports pure functions from markdown.ts and adds JSX rendering.
  */
-import type { JSX } from "solid-js";
+import { For, type JSX } from "solid-js";
 import { parseMarkdownSegments } from "./markdown";
 import { stripAnsiCodes, type FormattedSegment } from "./ansi";
 
@@ -22,16 +22,12 @@ export function RenderMarkdownSegments(props: {
   boldColor: string;
   tagColor?: string;
 }): JSX.Element {
-  const segments = parseMarkdownSegments(props.text);
+  const segments = () => parseMarkdownSegments(props.text);
   const effectiveTagColor = props.tagColor || props.boldColor;
 
-  if (segments.length === 0) {
-    return <span style={{ fg: props.normalColor }}>{props.text}</span>;
-  }
-
   return (
-    <>
-      {segments.map((segment) => {
+    <For each={segments()}>
+      {(segment) => {
         if (segment.tag) {
           return <span style={{ fg: effectiveTagColor }}>{segment.text}</span>;
         }
@@ -40,8 +36,8 @@ export function RenderMarkdownSegments(props: {
           return <b style={{ fg: props.boldColor }}>{segment.text}</b>;
         }
         return <span style={{ fg: props.normalColor }}>{segment.text}</span>;
-      })}
-    </>
+      }}
+    </For>
   );
 }
 
