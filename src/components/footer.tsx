@@ -1,8 +1,11 @@
+import { useTerminalDimensions } from "@opentui/solid";
 import { useTheme } from "../context/ThemeContext";
 import { formatDuration, formatNumber } from "../lib/time";
+import { truncateText } from "../lib/text-utils";
 import type { TokenUsage } from "../state";
 import { keyboardShortcuts, layout } from "./tui-theme";
 import type { RateLimitState } from "./tui-types";
+import { createMemo } from "solid-js";
 
 export type FooterProps = {
   commits: number;
@@ -21,6 +24,25 @@ export type FooterProps = {
 export function Footer(props: FooterProps) {
   const { theme } = useTheme();
   const t = () => theme();
+  const terminalDimensions = useTerminalDimensions();
+
+  const layoutMetrics = createMemo(() => {
+    const width = terminalDimensions().width;
+    const isCompact = width < 80;
+    const hideTokens = width < 100;
+    const hideDiff = width < 70;
+    
+    // Available width for shortcuts (total - stats - padding)
+    const statsWidth = (hideTokens ? 0 : 25) + (hideDiff ? 0 : 15) + 10;
+    const availableShortcuts = width - statsWidth - 4;
+    
+    return {
+      isCompact,
+      hideTokens,
+      hideDiff,
+      availableShortcuts
+    };
+  });
 
   const shortcuts = () => {
     const list = [...keyboardShortcuts];
@@ -31,6 +53,12 @@ export function Footer(props: FooterProps) {
     if (props.rateLimitState?.limitedAt) {
       list.push({ key: "⏳", description: "Rate Limited" });
     }
+    
+    // In compact mode, only show essential shortcuts
+    if (layoutMetrics().isCompact) {
+      return list.filter(s => ["q", "p", "c", "?"].includes(s.key));
+    }
+    
     return list;
   };
 
@@ -40,10 +68,23 @@ export function Footer(props: FooterProps) {
     return props.adapterMode === "pty" ? "[PTY]" : "[SDK]";
   };
 
-  const shortcutText = () =>
-    shortcuts()
+  const shortcutText = () => {
+    let text = shortcuts()
       .map(({ key, description }) => `${key}:${description}`)
       .join("  ");
+      
+    if (text.length > layoutMetrics().availableShortcuts) {
+      // If still too long, try removing descriptions for some
+      text = shortcuts()
+        .map(({ key, description }) => layoutMetrics().isCompact ? key : `${key}:${description}`)
+        .join(" ");
+    }
+    
+    if (text.length > layoutMetrics().availableShortcuts) {
+      return text.slice(0, layoutMetrics().availableShortcuts - 1) + "…";
+    }
+    return text;
+  };
 
   return (
     <box
@@ -64,8 +105,8 @@ export function Footer(props: FooterProps) {
 
       <box flexGrow={1} />
 
-      <box flexDirection="row" gap={1}>
-        {props.tokens && (props.tokens.input > 0 || props.tokens.output > 0) && (
+      <box flexDirection="row" gap={1} flexShrink={0}>
+        {props.tokens && (props.tokens.input > 0 || props.tokens.output > 0) && !layoutMetrics().hideTokens && (
           <>
             <text fg={t().textMuted}>Tokens:</text>
             <text fg={t().secondary}>{formatNumber(props.tokens.input)}in</text>
@@ -82,14 +123,21 @@ export function Footer(props: FooterProps) {
             <text fg={t().textMuted}> │ </text>
           </>
         )}
-        <text fg={t().textMuted}>Diff:</text>
-        <text fg={t().success}>+{props.linesAdded}</text>
-        <text fg={t().textMuted}>/</text>
-        <text fg={t().error}>-{props.linesRemoved}</text>
-        <text fg={t().textMuted}> │ </text>
+        
+        {!layoutMetrics().hideDiff && (
+          <>
+            <text fg={t().textMuted}>Diff:</text>
+            <text fg={t().success}>+{props.linesAdded}</text>
+            <text fg={t().textMuted}>/</text>
+            <text fg={t().error}>-{props.linesRemoved}</text>
+            <text fg={t().textMuted}> │ </text>
+          </>
+        )}
+        
         <text fg={t().textMuted}>Commits:</text>
         <text fg={t().primary}>{props.commits}</text>
       </box>
     </box>
   );
 }
+
