@@ -85,6 +85,13 @@ export function destroyRenderer(): void {
   rendererDestroyed = true;
   globalRenderer.setTerminalTitle("");
   globalRenderer.destroy();
+
+  // Null out global references to allow garbage collection
+  globalSetState = null;
+  globalUpdateIterationTimes = null;
+  globalSendMessage = null;
+  globalRenderer = null;
+  globalTriggerTaskRefresh = null;
 }
 
 /**
@@ -353,12 +360,17 @@ export function App(props: AppProps) {
 
   onCleanup(() => {
     clearInterval(elapsedInterval);
+    // Note: destroyRenderer() is called here, which already nulls out
+    // the global references. We keep the explicit nulling below for
+    // additional safety in case destroyRenderer() behavior changes.
     destroyRenderer();
+    
     // Clean up module-level references
     globalSetState = null;
     globalUpdateIterationTimes = null;
     globalTriggerTaskRefresh = null;
     globalRenderer = null;
+    globalSendMessage = null; // Also clear sendMessage
   });
 
   // Pause file path
