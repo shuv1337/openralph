@@ -4,7 +4,7 @@ import type { LoopOptions, PersistedState, SessionInfo, ToolEvent } from "./stat
 import type { SandboxConfig, RateLimitState, ActiveAgentState } from "./components/tui-types";
 import { getHeadHash, getCommitsSince, getDiffStats } from "./git.js";
 import { parsePlan, validatePlanCompletion } from "./plan.js";
-import { log } from "./lib/log";
+import { log, checkMemoryThreshold } from "./lib/log";
 import { rateLimitDetector, getFallbackAgent } from "./lib/rate-limit";
 import { stripAnsiCodes } from "./lib/ansi";
 
@@ -601,27 +601,22 @@ async function forceTerminateOpencodeProcesses(): Promise<void> {
 
     const myPid = process.pid;
     const parentMap = new Map<number, number>();
-    const opencodePids: number[] = [];
+    const pidsToKill: number[] = [];
 
-    // Build process tree map and find targets
+    // Build process tree map
     for (const p of processes) {
       if (p && typeof p.ProcessId === 'number') {
         parentMap.set(p.ProcessId, p.ParentProcessId);
-        // Case-insensitive check for opencode.exe
-        if (p.Name && typeof p.Name === 'string' && p.Name.toLowerCase() === 'opencode.exe') {
-          opencodePids.push(p.ProcessId);
-        }
       }
     }
 
-    const pidsToKill: number[] = [];
-
-    // Filter for descendants of current process
-    for (const pid of opencodePids) {
-      let current = pid;
-      let isDescendant = false;
+    // Identify all descendants of the current process
+    for (const p of processes) {
+      if (!p || typeof p.ProcessId !== 'number') continue;
+      
+      let current = p.ProcessId;
       const visited = new Set<number>(); // Prevent infinite loops
-
+      
       // Traverse up the parent chain
       while (current && current !== 0 && !visited.has(current)) {
         visited.add(current);
@@ -629,31 +624,30 @@ async function forceTerminateOpencodeProcesses(): Promise<void> {
         if (!parent) break;
 
         if (parent === myPid) {
-          isDescendant = true;
+          pidsToKill.push(p.ProcessId);
           break;
         }
         current = parent;
       }
-
-      if (isDescendant) {
-        pidsToKill.push(pid);
-      }
     }
 
     if (pidsToKill.length > 0) {
-      log("loop", `Terminating ${pidsToKill.length} opencode.exe descendants`, { pids: pidsToKill });
+      log("loop", `Terminating ${pidsToKill.length} descendant processes`, { pids: pidsToKill });
       
-      // Kill each identified descendant
+      // Kill each identified descendant tree
+      // Using /T here as well for good measure, although pidsToKill already contains 
+      // the whole tree, /T is more robust against new children spawned during cleanup.
       for (const pid of pidsToKill) {
         try {
-           // Use taskkill for robust termination on Windows
-           const killProc = Bun.spawn(["taskkill", "/F", "/PID", String(pid)], {
+           // Check if process still exists before killing
+           // (avoiding taskkill error noise)
+           const killProc = Bun.spawn(["taskkill", "/F", "/T", "/PID", String(pid)], {
              stdout: "ignore",
              stderr: "ignore"
            });
            await killProc.exited;
         } catch (e) {
-           log("loop", `Failed to kill PID ${pid}`, { error: String(e) });
+           // Ignore errors - process may already be dead
         }
       }
     }
@@ -750,15 +744,33 @@ export async function runLoop(
       activeSubscriptionController = null;
     }
     
-    // 2. Give sessions a moment to clean up gracefully (100ms)
+    // 2. Delete active session and give it a moment to clean up (100ms)
     if (activeSessionId) {
-      log("loop", "Waiting for session cleanup", { sessionId: activeSessionId });
+      log("loop", "Deleting active session", { sessionId: activeSessionId });
+      // We attempt to delete the session if we have a client available
+      // Note: client might be out of scope here if we are called from outside,
+      // but runLoop's client is available via closure.
+      try {
+        // @ts-ignore - client is available in runLoop closure
+        await client.session.delete({ path: { id: activeSessionId } }).catch(() => {});
+      } catch {
+        // Ignore errors during emergency cleanup
+      }
       await Bun.sleep(100);
       activeSessionId = null;
     }
+
     
     // 3. Close the server
     if (server) {
+      // 3.1 On Windows, force terminate any remaining processes (only if we started the server)
+      // We do this BEFORE calling server.close() to ensure we can trace the process tree
+      // while the parent is still alive. taskkill /F /T will then handle the entire tree.
+      if (process.platform === "win32" && shouldForceCleanup) {
+        log("loop", "Windows: checking for orphaned opencode processes");
+        await forceTerminateOpencodeProcesses();
+      }
+
       log("loop", "Closing server", { attached: server.attached });
       try {
         server.close();
@@ -771,12 +783,6 @@ export async function runLoop(
       
       // 4. Wait briefly for graceful server shutdown (500ms)
       await Bun.sleep(500);
-      
-      // 5. On Windows, force terminate any remaining processes (only if we started the server)
-      if (process.platform === "win32" && shouldForceCleanup) {
-        log("loop", "Windows: checking for orphaned opencode processes");
-        await forceTerminateOpencodeProcesses();
-      }
       
       server = null;
     }
@@ -954,11 +960,14 @@ export async function runLoop(
         if (signal.aborted) {
           activeSubscriptionController.abort();
         }
-        signal.addEventListener("abort", () => {
+
+        const onParentAbort = () => {
           activeSubscriptionController?.abort();
-        }, { once: true });
+        };
+        signal.addEventListener("abort", onParentAbort, { once: true });
         
         const events = await client.event.subscribe({ signal: subscriptionSignal });
+
 
         let promptSent = false;
 
@@ -1142,7 +1151,13 @@ export async function runLoop(
             log("loop", "Session idle, breaking event loop");
             sessionActive = false;
             activeSessionId = null; // Clear tracked session
-            activeSubscriptionController = null; // Clear subscription controller
+            
+            // Explicitly abort subscription to release network resources
+            if (activeSubscriptionController) {
+              activeSubscriptionController.abort();
+              activeSubscriptionController = null;
+            }
+            
             callbacks.onSessionEnded?.(sessionId);
             break;
           }
@@ -1161,10 +1176,17 @@ export async function runLoop(
             log("loop", "Session error", { errorMessage });
             sessionActive = false;
             activeSessionId = null; // Clear tracked session
-            activeSubscriptionController = null; // Clear subscription controller
+            
+            // Explicitly abort subscription on error
+            if (activeSubscriptionController) {
+              activeSubscriptionController.abort();
+              activeSubscriptionController = null;
+            }
+            
             callbacks.onSessionEnded?.(sessionId);
             throw new Error(errorMessage);
           }
+
 
           // Plan file modification detection (for real-time task updates)
           // Handles both file.edited (agent writes) and file.watcher.updated (external changes)
@@ -1181,6 +1203,29 @@ export async function runLoop(
             }
           }
         }
+
+        // Clear tracking Map to prevent memory leak across iterations
+        loggedTextByPartId.clear();
+
+        // Cleanup abort listener
+        signal.removeEventListener("abort", onParentAbort);
+
+        // Delete the session from the server to release server-side memory
+        if (sessionId) {
+          try {
+            log("loop", "Deleting completed session", { sessionId });
+            // Use the client to delete the session. We don't await this to avoid 
+            // blocking the loop if the server is slow to respond to deletions.
+            client.session.delete({ path: { id: sessionId } }).catch(e => {
+              log("loop", "Failed to delete session", { sessionId, error: String(e) });
+            });
+          } catch (e) {
+            log("loop", "Error initiating session deletion", { error: String(e) });
+          }
+        }
+
+        // Check memory threshold and log warning if exceeded
+        checkMemoryThreshold(`Iteration ${iteration}`);
 
         // Iteration completion (10.19)
         const iterationDuration = Date.now() - iterationStartTime;
