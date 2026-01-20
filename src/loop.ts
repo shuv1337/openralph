@@ -970,11 +970,8 @@ export async function runLoop(
 
 
         let promptSent = false;
-
-        // Set idle state while waiting for LLM response
-        callbacks.onIdleChanged(true);
-
         let receivedFirstEvent = false;
+
         // Track streamed text parts by ID - stores text we've already logged
         // so we only emit complete lines, not every streaming delta
         const loggedTextByPartId = new Map<string, string>();
@@ -998,6 +995,9 @@ export async function runLoop(
           if (event.type === "server.connected" && !promptSent) {
             promptSent = true;
             log("loop", "Sending prompt", { providerID, modelID });
+
+            // Set idle state while waiting for LLM response
+            callbacks.onIdleChanged(true);
 
             // Fire prompt in background - don't block event loop
             client.session.prompt({
@@ -1445,9 +1445,11 @@ async function runPtyLoop(
         sendMessage,
       });
 
-      callbacks.onIdleChanged(true);
       let receivedOutput = false;
       let accumulatedOutput = "";
+
+      // Signal we're waiting for response from PTY
+      callbacks.onIdleChanged(true);
 
       for await (const event of session.events) {
         await waitWhilePaused(pauseState, callbacks, signal, {
