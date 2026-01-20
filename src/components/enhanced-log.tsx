@@ -1,4 +1,4 @@
-import { Component, For, Match, Show, Switch, createEffect, createMemo, onCleanup, createSignal } from "solid-js";
+import { Component, For, Match, Show, Switch, createEffect, createMemo, onCleanup, createSignal, untrack } from "solid-js";
 import { useTheme } from "../context/ThemeContext";
 import { getExtendedTheme, type ExtendedTheme } from "../lib/enhanced-themes";
 import { useTerminalDimensions } from "@opentui/solid";
@@ -71,15 +71,43 @@ export const EnhancedLog: Component<EnhancedLogProps> = (props) => {
     return Array.from(groups.entries());
   });
 
-  const statusLabel = createMemo(() => getStatusLabel(props.status, props.isIdle));
+  // Use local signals to track status and isIdle for proper reactivity
+  // This ensures the component re-renders when these values change from the parent
+  const [localStatus, setLocalStatus] = createSignal(props.status);
+  const [localIsIdle, setLocalIsIdle] = createSignal(props.isIdle);
+  
+  // Sync local signals with props whenever props change
+  // This effect runs whenever props.status or props.isIdle changes
+  createEffect(() => {
+    const newStatus = props.status;
+    const newIsIdle = props.isIdle;
+    // Only update if changed to avoid unnecessary re-renders
+    if (untrack(localStatus) !== newStatus) {
+      setLocalStatus(newStatus);
+    }
+    if (untrack(localIsIdle) !== newIsIdle) {
+      setLocalIsIdle(newIsIdle);
+    }
+  });
+
+  // Now use local signals in memos - these WILL update when the local signals change
+  const statusLabel = createMemo(() => getStatusLabel(localStatus(), localIsIdle()));
   
   // Only show active indicator when actually active and not in a static terminal state
-  const showActiveIndicator = createMemo(() => 
-    props.status !== 'complete' && 
-    props.status !== 'error' && 
-    props.status !== 'stopped' &&
-    props.status !== 'idle'
-  );
+  const showActiveIndicator = createMemo(() => {
+    const status = localStatus();
+    return status !== 'complete' && 
+      status !== 'error' && 
+      status !== 'stopped' &&
+      status !== 'idle';
+  });
+
+  // Calculate the highest/current iteration number
+  const currentIteration = createMemo(() => {
+    const groups = groupedEvents();
+    if (groups.length === 0) return 0;
+    return Math.max(...groups.map(([iteration]) => iteration));
+  });
 
   return (
     <scrollbox
@@ -92,7 +120,33 @@ export const EnhancedLog: Component<EnhancedLogProps> = (props) => {
         visible: true,
         trackOptions: { backgroundColor: t().border }
       }}
-    ><For each={groupedEvents()}>{(item) => { const iteration = item[0]; const events = item[1]; const separator = events.find(e => e.type === 'separator'); return (<IterationGroup iteration={iteration} events={events} stats={separator ? { duration: separator.duration, commitCount: separator.commitCount || 0 } : undefined} availableWidth={availableWidth()} showExecutionStates={props.showExecutionStates} showDurations={props.showDurations} theme={t()}/>); }}</For><Show when={showActiveIndicator()}><box width="100%" flexDirection="row" paddingTop={1} paddingBottom={1}><Spinner frames={SPINNER_FRAMES} color={t().secondary} /><text fg={t().textMuted}> {statusLabel()}</text></box></Show><Show when={props.errorRetryAt !== undefined}><RetryCountdown retryAt={props.errorRetryAt!} theme={t()} /></Show></scrollbox>
+    >
+      <For each={groupedEvents()}>
+        {(item) => {
+          const iteration = item[0];
+          const events = item[1];
+          const separator = events.find(e => e.type === 'separator');
+          // Check if this is the current/active iteration
+          const isActiveIteration = iteration === currentIteration() && showActiveIndicator();
+          return (
+            <IterationGroup 
+              iteration={iteration} 
+              events={events} 
+              stats={separator ? { duration: separator.duration, commitCount: separator.commitCount || 0 } : undefined} 
+              availableWidth={availableWidth()} 
+              showExecutionStates={props.showExecutionStates} 
+              showDurations={props.showDurations} 
+              theme={t()}
+              isActive={isActiveIteration}
+              statusLabel={isActiveIteration ? statusLabel() : undefined}
+            />
+          );
+        }}
+      </For>
+      <Show when={props.errorRetryAt !== undefined}>
+        <RetryCountdown retryAt={props.errorRetryAt!} theme={t()} />
+      </Show>
+    </scrollbox>
   );
 };
 
@@ -104,6 +158,10 @@ const IterationGroup: Component<{
   showExecutionStates?: boolean;
   showDurations?: boolean;
   theme: ExtendedTheme;
+  /** Whether this is the current/active iteration that should show the status indicator */
+  isActive?: boolean;
+  /** The status label to show (e.g., "Looping...", "Waiting for response...") */
+  statusLabel?: string;
 }> = (props) => {
   const t = () => props.theme;
 
@@ -116,7 +174,44 @@ const IterationGroup: Component<{
   );
 
   return (
-    <box width="100%" flexDirection="column"><box width="100%" paddingTop={1} paddingBottom={1} flexDirection="row"><text fg={t().textMuted}>── </text><text fg={t().iteration}>iteration {props.iteration}</text><text fg={t().textMuted}> ────────────── </text><text fg={t().duration}>{durationText()}</text><text fg={t().textMuted}> · </text><text fg={t().commit}>{commitText()}</text><text fg={t().textMuted}> ──</text></box><For each={props.events}>{(event) => (<Switch><Match when={event.type === 'tool'}><ToolDisplay event={event} showState={props.showExecutionStates} showDuration={props.showDurations} maxWidth={props.availableWidth} theme={props.theme}/></Match><Match when={event.type === 'reasoning'}><ReasoningEvent event={event} theme={props.theme} /></Match></Switch>)}</For></box>
+    <box width="100%" flexDirection="column">
+      {/* Iteration header */}
+      <box width="100%" paddingTop={1} paddingBottom={1} flexDirection="row">
+        <text fg={t().textMuted}>── </text>
+        <text fg={t().iteration}>iteration {props.iteration}</text>
+        <text fg={t().textMuted}> ────────────── </text>
+        <text fg={t().duration}>{durationText()}</text>
+        <text fg={t().textMuted}> · </text>
+        <text fg={t().commit}>{commitText()}</text>
+        <text fg={t().textMuted}> ──</text>
+      </box>
+      {/* Events for this iteration */}
+      <For each={props.events}>
+        {(event) => (
+          <Switch>
+            <Match when={event.type === 'tool'}>
+              <ToolDisplay 
+                event={event} 
+                showState={props.showExecutionStates} 
+                showDuration={props.showDurations} 
+                maxWidth={props.availableWidth} 
+                theme={props.theme}
+              />
+            </Match>
+            <Match when={event.type === 'reasoning'}>
+              <ReasoningEvent event={event} theme={props.theme} />
+            </Match>
+          </Switch>
+        )}
+      </For>
+      {/* Status indicator - only for the active/current iteration */}
+      <Show when={props.isActive && props.statusLabel}>
+        <box width="100%" flexDirection="row" paddingTop={1} paddingBottom={1}>
+          <Spinner frames={SPINNER_FRAMES} color={t().secondary} />
+          <text fg={t().textMuted}> {props.statusLabel}</text>
+        </box>
+      </Show>
+    </box>
   );
 };
 
