@@ -47,11 +47,13 @@ export interface LoopStatsStore {
   /** Set the number of remaining tasks for ETA calculation */
   setRemainingTasks: (count: number) => void;
   /** Initialize with existing iteration times (for resuming state) */
-  initialize: (startTime: number, iterationTimes: number[]) => void;
+  initialize: (startTime: number, iterationTimes: number[], totalPausedMs?: number, lastSaveTime?: number) => void;
   /** Reset all stats to initial state */
   reset: () => void;
   /** Tick the elapsed time (call from interval) */
   tick: () => void;
+  /** Get stats for persistence (accounts for current pause duration) */
+  getPersistentStats: () => { totalPausedMs: number; lastSaveTime: number };
 }
 
 /**
@@ -189,12 +191,24 @@ export function createLoopStats(): LoopStatsStore {
 
   /**
    * Initialize with existing iteration times (for resuming state).
+   * Accounts for offline time by adding the gap since last save to totalPausedMs.
    */
-  function initialize(existingStartTime: number, existingIterationTimes: number[]): void {
+  function initialize(existingStartTime: number, existingIterationTimes: number[], existingTotalPausedMs: number = 0, lastSaveTime?: number): void {
     setStartTime(existingStartTime);
     setIterationDurations([...existingIterationTimes]);
+    
+    // Calculate offline time (time when the app was not running)
+    let offlineTime = 0;
+    if (lastSaveTime && lastSaveTime > 0) {
+      offlineTime = Math.max(0, Date.now() - lastSaveTime);
+    }
+    
+    const newTotalPausedMs = existingTotalPausedMs + offlineTime;
+    setTotalPausedMs(newTotalPausedMs);
+    
     // Calculate initial elapsed time
-    setElapsedMs(Date.now() - existingStartTime);
+    const total = Date.now() - existingStartTime;
+    setElapsedMs(Math.max(0, total - newTotalPausedMs));
   }
 
   /**
@@ -225,6 +239,21 @@ export function createLoopStats(): LoopStatsStore {
     setElapsedMs(total - paused);
   }
 
+  /**
+   * Get stats for persistence, accounting for current pause duration if active.
+   */
+  function getPersistentStats() {
+    let currentTotalPaused = totalPausedMs();
+    const pauseStart = pauseStartTime();
+    if (isPaused() && pauseStart !== null) {
+      currentTotalPaused += Date.now() - pauseStart;
+    }
+    return {
+      totalPausedMs: currentTotalPaused,
+      lastSaveTime: Date.now(),
+    };
+  }
+
   return {
     iterationDurations,
     averageIterationMs,
@@ -240,5 +269,6 @@ export function createLoopStats(): LoopStatsStore {
     initialize,
     reset,
     tick,
+    getPersistentStats,
   };
 }

@@ -6,6 +6,8 @@ export type PersistedState = {
   initialCommitHash: string; // HEAD at start
   iterationTimes: number[]; // Duration of each completed iteration (ms)
   planFile: string; // Which plan file we're working on
+  totalPausedMs?: number; // Total time spent paused (ms)
+  lastSaveTime?: number; // Last time state was saved (to account for offline time)
 };
 
 /**
@@ -53,6 +55,8 @@ export type LoopState = {
   rateLimitState?: RateLimitState;
   /** System prompt text for display in prompt view mode */
   promptText?: string;
+  /** The project directory where Ralph is running */
+  projectDir?: string;
 };
 
 export type ToolEvent = {

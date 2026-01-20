@@ -53,6 +53,7 @@ export async function runHeadlessMode(
     onIterationComplete: (iteration: number, duration: number, commits: number) => {
       callbacks.onIterationComplete(iteration, duration, commits);
       persistedState.iterationTimes.push(duration);
+      persistedState.lastSaveTime = Date.now();
       void saveState(persistedState);
     },
     onPause: () => {
