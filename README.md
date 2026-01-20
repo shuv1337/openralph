@@ -107,6 +107,7 @@ ralph --plan BACKLOG.json          # different PRD file
 ralph --progress progress.txt      # custom progress log
 ralph --model anthropic/claude-opus-4  # different model
 ralph --reset                      # remove generated files and state, then exit
+ralph --verbose                    # enable debug logging to file
 ralph init --from plan.md          # convert unstructured plan to PRD JSON
 ```
 
@@ -132,7 +133,8 @@ ralph init --from plan.md          # convert unstructured plan to PRD JSON
 | `--debug, -d` | `false` | Manual session creation |
 | `--yes` | `false` | Auto-confirm prompts |
 | `--auto-reset` | `true` | Auto-reset when no TTY prompt |
-| `--force` | `false` | Force acquire session lock |
+| `--force, -f` | `false` | Force acquire session lock |
+| `--verbose, -V` | `false` | Enable verbose debug logging to file |
 | `--fallback-agent` | (none) | Fallback agent mapping (format: `primary:fallback`) |
 
 ### Init Subcommand
@@ -218,6 +220,7 @@ CLI arguments override config file values.
 | `RALPH_PLAN` | Override plan file path |
 | `RALPH_PROGRESS` | Override progress log path |
 | `RALPH_SERVER` | Override OpenCode server URL |
+| `RALPH_LOG_DIR` | Override debug log directory |
 
 ### Safety & Reliability
 
@@ -295,6 +298,7 @@ Prefer PRD JSON with `passes` flags so Ralph can track scope and progress. Two f
 | `.ralph-pause` | Created by `p` key to pause loop |
 | `.opencode/plugin/ralph-write-guardrail.ts` | Protects files from AI modification |
 | `AGENTS.md` | Project configuration for AI agents |
+| `~/.local/state/ralph/logs/*.log` | Debug and memory logs (when `--verbose` is enabled) |
 
 Add to `.gitignore`:
 ```
