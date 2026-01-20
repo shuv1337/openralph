@@ -60,6 +60,8 @@ export type AppStateSetters = {
   requestRender: () => void;
   /** Trigger immediate task list refresh (for real-time plan file updates) */
   triggerTaskRefresh: () => void;
+  /** Get current timing stats for persistence */
+  getPersistentStats: () => { totalPausedMs: number; lastSaveTime: number };
 };
 
 /**
@@ -76,6 +78,7 @@ let globalUpdateIterationTimes: ((times: number[]) => void) | null = null;
 let globalSendMessage: ((message: string) => Promise<void>) | null = null;
 let globalRenderer: ReturnType<typeof useRenderer> | null = null;
 let globalTriggerTaskRefresh: (() => void) | null = null;
+let globalGetPersistentStats: (() => { totalPausedMs: number; lastSaveTime: number }) | null = null;
 let rendererDestroyed = false;
 
 export function destroyRenderer(): void {
@@ -92,6 +95,7 @@ export function destroyRenderer(): void {
   globalSendMessage = null;
   globalRenderer = null;
   globalTriggerTaskRefresh = null;
+  globalGetPersistentStats = null;
 }
 
 /**
@@ -200,6 +204,12 @@ export async function startApp(props: StartAppProps): Promise<StartAppResult> {
         globalTriggerTaskRefresh();
       }
     },
+    getPersistentStats: () => {
+      if (globalGetPersistentStats) {
+        return globalGetPersistentStats();
+      }
+      return { totalPausedMs: 0, lastSaveTime: Date.now() };
+    },
   };
 
   return { exitPromise, stateSetters };
@@ -238,7 +248,9 @@ export function App(props: AppProps) {
   // Initialize loop stats with persisted state
   loopStats.initialize(
     props.persistedState.startTime,
-    props.persistedState.iterationTimes
+    props.persistedState.iterationTimes,
+    props.persistedState.totalPausedMs,
+    props.persistedState.lastSaveTime
   );
   
   // State signal for loop state (legacy - being migrated to loopStore)
@@ -342,6 +354,8 @@ export function App(props: AppProps) {
   };
   // Export refreshTasks for real-time plan file updates
   globalTriggerTaskRefresh = refreshTasks;
+  // Export getPersistentStats for accurate timing persistence
+  globalGetPersistentStats = () => loopStats.getPersistentStats();
 
   // Update elapsed time and ETA periodically (5000ms to reduce render frequency)
   // Uses loopStats hook for pause-aware elapsed time tracking
@@ -390,6 +404,12 @@ export function App(props: AppProps) {
       loopStats.resume();
       // Also update legacy state for external compatibility
       setStateAndRender((prev) => ({ ...prev, status: "running" }));
+      // Windows: Force additional render requests to ensure TUI updates
+      // The scrollbox component may need multiple render cycles to update
+      if (process.platform === "win32") {
+        setTimeout(() => renderer.requestRender?.(), 50);
+        setTimeout(() => renderer.requestRender?.(), 150);
+      }
     } else {
       // Pause: create pause file and update status via dispatch
       await Bun.write(PAUSE_FILE, String(process.pid));
@@ -668,6 +688,10 @@ function AppContent(props: AppContentProps) {
         line: task.line,
         priority: task.priority,
         category: task.category,
+        effort: task.effort,
+        risk: task.risk,
+        originalId: task.originalId,
+        steps: task.steps,
       };
     })
   );
@@ -1702,6 +1726,7 @@ function AppContent(props: AppContentProps) {
           sandboxConfig={props.state().sandboxConfig}
           activeAgentState={props.state().activeAgentState}
           rateLimitState={props.state().rateLimitState}
+          projectDir={props.state().projectDir}
         />
         {showDashboard() && (
           <ProgressDashboard
@@ -1713,6 +1738,7 @@ function AppContent(props: AppContentProps) {
             currentTaskTitle={currentTask()?.title}
             currentModel={props.state().currentModel}
             sandboxConfig={props.state().sandboxConfig}
+            projectDir={props.state().projectDir}
           />
         )}
       <box

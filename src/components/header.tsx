@@ -36,6 +36,8 @@ export type HeaderProps = {
   rateLimitState?: RateLimitState;
   /** Maximum iterations (for iteration counter display) */
   maxIterations?: number;
+  /** The project directory where Ralph is running */
+  projectDir?: string;
 };
 
 // =====================================================

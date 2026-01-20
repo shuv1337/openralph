@@ -16,6 +16,8 @@ export type ProgressDashboardProps = {
   currentModel?: string;
   /** Sandbox configuration for display */
   sandboxConfig?: SandboxConfig;
+  /** The project directory where Ralph is running */
+  projectDir?: string;
 };
 
 function getStatusDisplay(status: RalphStatus, theme: ReturnType<typeof useTheme>["theme"], taskId?: string) {
@@ -139,6 +141,13 @@ export function ProgressDashboard(props: ProgressDashboardProps) {
           )}
         </box>
         <box flexDirection="row" gap={1} flexShrink={0}>
+          {props.projectDir && (
+            <>
+              <text fg={t().textMuted}>Project:</text>
+              <text fg={t().primary}> {truncateText(props.projectDir, layoutMetrics().metaItemMax)}</text>
+              {!layoutMetrics().isCompact && <text fg={t().textMuted}> │</text>}
+            </>
+          )}
           <text fg={t().textMuted}>Sandbox:</text>
           <text fg={props.sandboxConfig?.enabled ? t().success : t().textMuted}> {truncateText(sandboxLabel() || "", layoutMetrics().metaItemMax)}</text>
         </box>
