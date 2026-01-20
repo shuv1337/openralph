@@ -1,0 +1,56 @@
+{
+  "metadata": {
+    "generated": true,
+    "generator": "ralph-plan-command",
+    "createdAt": "2026-01-20T00:00:00.000Z",
+    "sourceFile": "plan.md",
+    "title": "Extended PRD Test Fixture",
+    "summary": "This fixture tests extended PRD format with custom IDs, effort, and risk fields.",
+    "assumptions": [
+      "The project uses TypeScript",
+      "Tests are run with Bun"
+    ],
+    "approach": "Test all extended fields are properly parsed.",
+    "risks": [
+      {
+        "risk": "Fields might be ignored",
+        "likelihood": "Low",
+        "impact": "Medium",
+        "mitigation": "Add comprehensive tests"
+      }
+    ],
+    "estimatedEffort": "1-2 hours",
+    "totalTasks": 3
+  },
+  "items": [
+    {
+      "id": "1.1.1",
+      "category": "setup",
+      "description": "Verify project setup",
+      "steps": ["Run bun install", "Verify dependencies"],
+      "effort": "XS",
+      "risk": "L",
+      "passes": true
+    },
+    {
+      "id": "1.1.2",
+      "category": "impl",
+      "description": "Implement feature",
+      "steps": ["Write code", "Add tests"],
+      "effort": "M",
+      "risk": "M",
+      "passes": false,
+      "status": "actionable"
+    },
+    {
+      "id": "2.1.1",
+      "category": "test",
+      "description": "Run verification",
+      "steps": ["Run tests", "Check coverage"],
+      "effort": "S",
+      "risk": "L",
+      "passes": false,
+      "status": "pending"
+    }
+  ]
+}

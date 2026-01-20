@@ -481,6 +481,7 @@ Key Assumptions:
 .env
 # Ralph - AI agent loop files
 .ralph*
+.opencode/plugin/ralph-write-guardrail.ts
 `;
     const gitignorePath = await tempDir.write(".gitignore", existingContent);
 
@@ -598,11 +599,23 @@ describe("isGeneratedPrd", () => {
     expect(isGeneratedPrd(content)).toBe(false);
   });
 
-  it("should return false for PRD with wrong generator", () => {
+  it("should return true for PRD with any custom generator (generator-agnostic)", () => {
     const content = JSON.stringify({
       metadata: {
         generated: true,
-        generator: "other-tool",
+        generator: "my-custom-tool",
+        createdAt: "2025-01-01T00:00:00.000Z",
+      },
+      items: [{ description: "Task", passes: false }],
+    });
+    expect(isGeneratedPrd(content)).toBe(true);
+  });
+
+  it("should return false for PRD with empty generator string", () => {
+    const content = JSON.stringify({
+      metadata: {
+        generated: true,
+        generator: "",
         createdAt: "2025-01-01T00:00:00.000Z",
       },
       items: [{ description: "Task", passes: false }],

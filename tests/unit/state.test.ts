@@ -37,6 +37,8 @@ describe("state management", () => {
         initialCommitHash: "abc123def456789012345678901234567890abcd",
         iterationTimes: [60000, 120000, 90000],
         planFile: "plan.md",
+        totalPausedMs: 0,
+        lastSaveTime: 1704067201000,
       };
 
       // Create the state file with valid JSON
@@ -50,6 +52,8 @@ describe("state management", () => {
       expect(result!.initialCommitHash).toBe("abc123def456789012345678901234567890abcd");
       expect(result!.iterationTimes).toEqual([60000, 120000, 90000]);
       expect(result!.planFile).toBe("plan.md");
+      expect(result!.totalPausedMs).toBe(0);
+      expect(result!.lastSaveTime).toBe(1704067201000);
     });
   });
 
@@ -60,6 +64,8 @@ describe("state management", () => {
         initialCommitHash: "abc123def456789012345678901234567890abcd",
         iterationTimes: [60000, 120000],
         planFile: "plan.md",
+        totalPausedMs: 1000,
+        lastSaveTime: 1704067202000,
       };
 
       await saveState(state);
@@ -79,12 +85,16 @@ describe("state management", () => {
       expect(parsed).toHaveProperty("initialCommitHash");
       expect(parsed).toHaveProperty("iterationTimes");
       expect(parsed).toHaveProperty("planFile");
+      expect(parsed).toHaveProperty("totalPausedMs");
+      expect(parsed).toHaveProperty("lastSaveTime");
 
       // Verify values are correct
       expect(parsed.startTime).toBe(1704067200000);
       expect(parsed.initialCommitHash).toBe("abc123def456789012345678901234567890abcd");
       expect(parsed.iterationTimes).toEqual([60000, 120000]);
       expect(parsed.planFile).toBe("plan.md");
+      expect(parsed.totalPausedMs).toBe(1000);
+      expect(parsed.lastSaveTime).toBe(1704067202000);
     });
 
     it("should overwrite existing state with new values", async () => {
@@ -93,6 +103,8 @@ describe("state management", () => {
         initialCommitHash: "abc123def456789012345678901234567890abcd",
         iterationTimes: [60000],
         planFile: "old-plan.md",
+        totalPausedMs: 0,
+        lastSaveTime: 1704067201000,
       };
 
       const secondState: PersistedState = {
@@ -100,6 +112,8 @@ describe("state management", () => {
         initialCommitHash: "def456789012345678901234567890abcdef12",
         iterationTimes: [90000, 120000, 150000],
         planFile: "new-plan.md",
+        totalPausedMs: 2000,
+        lastSaveTime: 1704153601000,
       };
 
       // Save first state
@@ -116,6 +130,8 @@ describe("state management", () => {
       expect(loaded!.initialCommitHash).toBe(secondState.initialCommitHash);
       expect(loaded!.iterationTimes).toEqual(secondState.iterationTimes);
       expect(loaded!.planFile).toBe(secondState.planFile);
+      expect(loaded!.totalPausedMs).toBe(secondState.totalPausedMs);
+      expect(loaded!.lastSaveTime).toBe(secondState.lastSaveTime);
 
       // Also verify the first state values are NOT present
       expect(loaded!.startTime).not.toBe(firstState.startTime);
@@ -132,6 +148,8 @@ describe("state management", () => {
         initialCommitHash: "abc123def456789012345678901234567890abcd",
         iterationTimes: [60000, 120000, 90000],
         planFile: "plan.md",
+        totalPausedMs: 3000,
+        lastSaveTime: 1704067205000,
       };
 
       // Save the state
@@ -151,6 +169,8 @@ describe("state management", () => {
         initialCommitHash: "abc123def456789012345678901234567890abcd",
         iterationTimes: [],
         planFile: "plan.md",
+        totalPausedMs: 0,
+        lastSaveTime: 1704067200001,
       };
 
       await saveState(originalState);
@@ -167,6 +187,8 @@ describe("state management", () => {
         initialCommitHash: "abc123def456789012345678901234567890abcd",
         iterationTimes: largeIterationTimes,
         planFile: "plan.md",
+        totalPausedMs: 123456,
+        lastSaveTime: 1704067200002,
       };
 
       await saveState(originalState);
@@ -182,6 +204,8 @@ describe("state management", () => {
         initialCommitHash: "abc123def456789012345678901234567890abcd",
         iterationTimes: [60000],
         planFile: "plans/feature-plan (v2).md",
+        totalPausedMs: 0,
+        lastSaveTime: 1704067200003,
       };
 
       await saveState(originalState);

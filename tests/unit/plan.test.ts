@@ -1,5 +1,6 @@
 import { describe, it, expect } from "bun:test";
 import { parsePlan, parsePlanTasks, type Task } from "../../src/plan";
+import { isGeneratedPrd, parsePrdMetadata } from "../../src/init";
 import path from "path";
 
 const fixturesDir = path.join(import.meta.dir, "../fixtures/plans");
@@ -159,20 +160,190 @@ describe("parsePlanTasks", () => {
     const result = await parsePlanTasks(path.join(fixturesDir, "prd-valid.json"));
 
     expect(result.length).toBe(2);
-    expect(result[0]).toEqual({
+    // Use toMatchObject to allow for additional fields (effort, risk, steps, etc.)
+    expect(result[0]).toMatchObject({
       id: "prd-1",
       line: 1,
       text: "Create the initial project scaffolding",
       done: true,
       category: "functional",
     });
-    expect(result[1]).toEqual({
+    // Also verify steps are included
+    expect(result[0].steps).toEqual([
+      "Run the project generator",
+      "Verify the entry point builds",
+    ]);
+    
+    expect(result[1]).toMatchObject({
       id: "prd-2",
       line: 2,
       text: "Wire up the API client",
       done: false,
       category: "integration",
     });
+    expect(result[1].steps).toEqual([
+      "Configure the base URL",
+      "Ensure the client is used by the service layer",
+    ]);
 
+  });
+
+  it("should parse extended PRD with custom IDs, effort, and risk", async () => {
+    const result = await parsePlanTasks(path.join(fixturesDir, "prd-extended.json"));
+
+    expect(result.length).toBe(3);
+    
+    // First task with custom ID
+    expect(result[0].id).toBe("1.1.1");
+    expect(result[0].originalId).toBe("1.1.1");
+    expect(result[0].text).toBe("Verify project setup");
+    expect(result[0].done).toBe(true);
+    expect(result[0].category).toBe("setup");
+    expect(result[0].effort).toBe("XS");
+    expect(result[0].risk).toBe("L");
+    
+    // Second task with status
+    expect(result[1].id).toBe("1.1.2");
+    expect(result[1].originalId).toBe("1.1.2");
+    expect(result[1].effort).toBe("M");
+    expect(result[1].risk).toBe("M");
+    expect(result[1].status).toBe("actionable");
+    
+    // Third task
+    expect(result[2].id).toBe("2.1.1");
+    expect(result[2].status).toBe("pending");
+  });
+
+  it("should fallback to prd-{index} when custom ID is not present", async () => {
+    const result = await parsePlanTasks(path.join(fixturesDir, "prd-valid.json"));
+
+    // prd-valid.json doesn't have id fields, so should use fallback
+    expect(result[0].id).toBe("prd-1");
+    expect(result[0].originalId).toBeUndefined();
+    expect(result[1].id).toBe("prd-2");
+    expect(result[1].originalId).toBeUndefined();
+  });
+});
+
+describe("isGeneratedPrd", () => {
+  it("should recognize ralph-init generated PRDs", () => {
+    const content = JSON.stringify({
+      metadata: {
+        generated: true,
+        generator: "ralph-init",
+        createdAt: "2026-01-20T00:00:00.000Z",
+      },
+      items: [],
+    });
+    expect(isGeneratedPrd(content)).toBe(true);
+  });
+
+  it("should recognize ralph-plan-command generated PRDs", () => {
+    const content = JSON.stringify({
+      metadata: {
+        generated: true,
+        generator: "ralph-plan-command",
+        createdAt: "2026-01-20T00:00:00.000Z",
+      },
+      items: [],
+    });
+    expect(isGeneratedPrd(content)).toBe(true);
+  });
+
+  it("should recognize any custom generator (generator-agnostic)", () => {
+    const content = JSON.stringify({
+      metadata: {
+        generated: true,
+        generator: "my-custom-prd-tool",
+        createdAt: "2026-01-20T00:00:00.000Z",
+      },
+      items: [],
+    });
+    expect(isGeneratedPrd(content)).toBe(true);
+  });
+
+  it("should not recognize PRDs with empty generator string", () => {
+    const content = JSON.stringify({
+      metadata: {
+        generated: true,
+        generator: "",
+        createdAt: "2026-01-20T00:00:00.000Z",
+      },
+      items: [],
+    });
+    expect(isGeneratedPrd(content)).toBe(false);
+  });
+
+  it("should not recognize PRDs without generated flag", () => {
+    const content = JSON.stringify({
+      metadata: {
+        generator: "ralph-init",
+      },
+      items: [],
+    });
+    expect(isGeneratedPrd(content)).toBe(false);
+  });
+
+  it("should not recognize plain arrays as generated", () => {
+    const content = JSON.stringify([
+      { description: "Task", passes: false },
+    ]);
+    expect(isGeneratedPrd(content)).toBe(false);
+  });
+});
+
+describe("parsePrdMetadata", () => {
+  it("should parse extended metadata from ralph-plan-command PRDs", async () => {
+    const content = await Bun.file(path.join(fixturesDir, "prd-extended.json")).text();
+    const metadata = parsePrdMetadata(content);
+
+    expect(metadata).not.toBeNull();
+    expect(metadata!.generated).toBe(true);
+    expect(metadata!.generator).toBe("ralph-plan-command");
+    expect(metadata!.title).toBe("Extended PRD Test Fixture");
+    expect(metadata!.summary).toContain("extended PRD format");
+    expect(metadata!.assumptions).toHaveLength(2);
+    expect(metadata!.assumptions![0]).toBe("The project uses TypeScript");
+    expect(metadata!.approach).toContain("extended fields");
+    expect(metadata!.risks).toHaveLength(1);
+    expect(metadata!.risks![0].risk).toBe("Fields might be ignored");
+    expect(metadata!.estimatedEffort).toBe("1-2 hours");
+    expect(metadata!.totalTasks).toBe(3);
+  });
+
+  it("should return null for plain array PRDs", () => {
+    const content = JSON.stringify([
+      { description: "Task", passes: false },
+    ]);
+    expect(parsePrdMetadata(content)).toBeNull();
+  });
+
+  it("should return null for PRDs without metadata", () => {
+    const content = JSON.stringify({
+      items: [{ description: "Task", passes: false }],
+    });
+    expect(parsePrdMetadata(content)).toBeNull();
+  });
+
+  it("should return null for non-JSON content", () => {
+    expect(parsePrdMetadata("# This is markdown")).toBeNull();
+  });
+
+  it("should handle partial metadata gracefully", () => {
+    const content = JSON.stringify({
+      metadata: {
+        generated: true,
+        generator: "ralph-init",
+        // Missing optional fields like title, summary, etc.
+      },
+      items: [],
+    });
+    const metadata = parsePrdMetadata(content);
+
+    expect(metadata).not.toBeNull();
+    expect(metadata!.generated).toBe(true);
+    expect(metadata!.title).toBeUndefined();
+    expect(metadata!.summary).toBeUndefined();
+    expect(metadata!.assumptions).toBeUndefined();
   });
 });
