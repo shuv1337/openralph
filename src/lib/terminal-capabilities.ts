@@ -15,7 +15,21 @@ export interface TerminalCapabilities {
   supportsUnicode: boolean;
   supportsAnimation: boolean;
   supportsTrueColor: boolean;
+  supportsKeyboardEnhancement: boolean;  // Kitty keyboard protocol support
   isWindowsLegacy: boolean;  // Windows CMD without ANSI support
+  // Platform detection
+  isMacOS: boolean;
+  isWindows: boolean;
+  isLinux: boolean;
+  // macOS terminal detection
+  isTerminalApp: boolean;    // Apple Terminal.app (limited capabilities)
+  isITerm2: boolean;         // iTerm2 (full capabilities)
+  isAlacritty: boolean;
+  isWezTerm: boolean;
+  isGhostty: boolean;
+  // Windows terminal detection
+  isWindowsTerminal: boolean;
+  isVscodeTerminal: boolean;
   terminalName?: string;
   colorLimit?: number;
 }
@@ -24,12 +38,25 @@ export interface TerminalCapabilities {
  * Detect terminal capabilities.
  */
 export function detectCapabilities(): TerminalCapabilities {
-  // Check for Windows legacy console
-  // Modern Windows Terminal and newer CMD support ANSI
+  // Platform detection
   const isWindows = process.platform === 'win32';
+  const isMacOS = process.platform === 'darwin';
+  const isLinux = process.platform === 'linux';
+
+  // Terminal program detection
+  const termProgram = process.env.TERM_PROGRAM || '';
+
+  // Windows terminal detection
   const isWindowsTerminal = !!process.env.WT_SESSION;
-  const isVscodeTerminal = process.env.TERM_PROGRAM === 'vscode';
+  const isVscodeTerminal = termProgram === 'vscode';
   const isLegacyWindows = isWindows && !isWindowsTerminal && !isVscodeTerminal && !process.env.ANSICON && !process.env.ConEmuANSI;
+
+  // macOS terminal detection
+  const isTerminalApp = termProgram === 'Apple_Terminal';
+  const isITerm2 = termProgram === 'iTerm.app';
+  const isAlacritty = termProgram === 'Alacritty';
+  const isWezTerm = termProgram === 'WezTerm';
+  const isGhostty = termProgram === 'ghostty' || process.env.GHOSTTY_RESOURCES_DIR !== undefined;
 
   // Check for ANSI support
   const supportsColors = process.env.TERM !== 'dumb' && !isLegacyWindows;
@@ -40,11 +67,29 @@ export function detectCapabilities(): TerminalCapabilities {
   const supportsUnicode = !isLegacyWindows || !!process.env.LANG?.includes('UTF-8');
 
   // Check for True Color (24-bit)
-  const supportsTrueColor = supportsColors && (
+  // Terminal.app supports 256 colors but not always true color reliably
+  const supportsTrueColor = supportsColors && !isTerminalApp && (
     process.env.COLORTERM === 'truecolor' ||
     process.env.COLORTERM === '24bit' ||
     isWindowsTerminal ||
-    isVscodeTerminal
+    isVscodeTerminal ||
+    isITerm2 ||
+    isAlacritty ||
+    isWezTerm ||
+    isGhostty
+  );
+
+  // Check for Kitty keyboard protocol support
+  // Terminal.app does NOT support Kitty protocol
+  const supportsKeyboardEnhancement = !isTerminalApp && !isLegacyWindows && (
+    isITerm2 ||
+    isAlacritty ||
+    isWezTerm ||
+    isGhostty ||
+    isWindowsTerminal ||
+    isVscodeTerminal ||
+    // Fallback: assume modern terminals support it if not explicitly known
+    (supportsColors && !!process.env.TERM?.includes('xterm'))
   );
 
   // Detect color support level
@@ -54,8 +99,8 @@ export function detectCapabilities(): TerminalCapabilities {
   } else if (supportsColors) {
     // Check for 256 color support
     const term = process.env.TERM || '';
-    if (term.includes('256') || term.includes('xterm')) {
-      level = '256';
+    if (term.includes('256') || term.includes('xterm') || isTerminalApp) {
+      level = '256';  // Terminal.app supports 256 colors
     } else {
       level = 'colors';
     }
@@ -72,8 +117,22 @@ export function detectCapabilities(): TerminalCapabilities {
     supportsUnicode,
     supportsAnimation,
     supportsTrueColor,
+    supportsKeyboardEnhancement,
     isWindowsLegacy: isLegacyWindows,
-    terminalName: process.env.TERM || process.env.TERM_PROGRAM,
+    // Platform flags
+    isMacOS,
+    isWindows,
+    isLinux,
+    // macOS terminal flags
+    isTerminalApp,
+    isITerm2,
+    isAlacritty,
+    isWezTerm,
+    isGhostty,
+    // Windows terminal flags
+    isWindowsTerminal,
+    isVscodeTerminal,
+    terminalName: process.env.TERM || termProgram,
   };
 }
 
