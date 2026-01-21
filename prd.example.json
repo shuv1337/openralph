@@ -1,0 +1,68 @@
+{
+  "metadata": {
+    "generated": true,
+    "generator": "ralph-plan-command",
+    "createdAt": "2025-01-20T10:00:00.000Z",
+    "sourceFile": "requirements.md",
+    "title": "User Authentication Feature",
+    "summary": "Implement JWT-based authentication with login/logout flow.",
+    "assumptions": [
+      "PostgreSQL database is available",
+      "Frontend uses React"
+    ],
+    "approach": "Start with backend API, then wire up frontend components.",
+    "risks": [
+      {
+        "risk": "Session management complexity",
+        "likelihood": "Medium",
+        "impact": "High",
+        "mitigation": "Use battle-tested JWT library"
+      }
+    ],
+    "estimatedEffort": "3-5 days",
+    "totalTasks": 3
+  },
+  "items": [
+    {
+      "id": "1.1.1",
+      "category": "setup",
+      "description": "Configure JWT library and environment variables",
+      "steps": [
+        "Install jsonwebtoken package",
+        "Add JWT_SECRET to .env.example",
+        "Verify token signing works"
+      ],
+      "effort": "XS",
+      "risk": "L",
+      "passes": true,
+      "status": "done"
+    },
+    {
+      "id": "1.1.2",
+      "category": "impl",
+      "description": "Create login endpoint with password validation",
+      "steps": [
+        "POST /api/auth/login returns token",
+        "Invalid credentials return 401",
+        "Rate limiting is enforced"
+      ],
+      "effort": "M",
+      "risk": "M",
+      "passes": false,
+      "status": "actionable"
+    },
+    {
+      "id": "1.2.1",
+      "category": "impl",
+      "description": "Add authentication middleware",
+      "steps": [
+        "Protected routes require valid token",
+        "Expired tokens return 401"
+      ],
+      "effort": "S",
+      "risk": "L",
+      "passes": false,
+      "status": "pending"
+    }
+  ]
+}
