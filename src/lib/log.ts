@@ -8,6 +8,17 @@
 import { appendFileSync, writeFileSync, existsSync } from "node:fs";
 import { getRollingLogPath, ensureLogDir } from "./paths.js";
 
+// Optional import of opentui core to flush console capture
+let capture: any;
+try {
+  // @ts-ignore
+  import("@opentui/core").then(m => {
+    capture = m.capture;
+  }).catch(() => {});
+} catch {
+  // Silently ignore if @opentui/core is not available
+}
+
 export type MemoryStats = {
   heapUsed: string;
   heapTotal: string;
@@ -120,10 +131,21 @@ const HEAP_WARNING_THRESHOLD = 500 * 1024 * 1024;
 const RSS_WARNING_THRESHOLD = 1500 * 1024 * 1024;
 
 /**
- * Check if memory usage exceeds threshold and log warning
+ * Check if memory usage exceeds threshold and log warning.
+ * Also flushes OpenTUI's console capture buffer to prevent native memory leaks.
  * @returns true if threshold exceeded
  */
 export function checkMemoryThreshold(label?: string): boolean {
+  // Always attempt to flush OpenTUI's console capture if available.
+  // This prevents the internal buffer from growing indefinitely.
+  if (capture && typeof capture.claimOutput === "function") {
+    try {
+      capture.claimOutput();
+    } catch {
+      // Ignore flush errors
+    }
+  }
+
   const mem = process.memoryUsage();
   let exceeded = false;
   let reason = "";

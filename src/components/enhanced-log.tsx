@@ -56,16 +56,22 @@ export const EnhancedLog: Component<EnhancedLogProps> = (props) => {
   );
 
   const groupedEvents = createMemo(() => {
+    // Optimization: Return iteration blocks to avoid full list re-renders
     const groups: Map<number, ToolEvent[]> = new Map();
+    const eventList = props.events;
     
-    for (const event of props.events) {
+    for (let i = 0; i < eventList.length; i++) {
+      const event = eventList[i];
       // Explicitly ignore spinner events in the list to prevent duplicates
       if (event.type === 'spinner') continue;
       
-      if (!groups.has(event.iteration)) {
-        groups.set(event.iteration, []);
+      const iteration = event.iteration;
+      let group = groups.get(iteration);
+      if (!group) {
+        group = [];
+        groups.set(iteration, group);
       }
-      groups.get(event.iteration)!.push(event);
+      group.push(event);
     }
     
     return Array.from(groups.entries());

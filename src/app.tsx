@@ -1001,6 +1001,33 @@ function AppContent(props: AppContentProps) {
         },
       },
     ]);
+
+    // Register "Write heap snapshot" command (Inspired by recent OpenCode update)
+    command.register("heapSnapshot", () => [
+      {
+        title: "Write heap snapshot",
+        value: "heapSnapshot",
+        description: "Write a V8 heap snapshot to disk for memory debugging",
+        onSelect: async () => {
+          try {
+            const { writeHeapSnapshot } = await import("v8");
+            const path = writeHeapSnapshot();
+            toast.show({
+              variant: "info",
+              message: `Heap snapshot written to ${path}`,
+              duration: 5000,
+            });
+            log("app", "Heap snapshot written", { path });
+          } catch (err) {
+            log("app", "Failed to write heap snapshot", { error: String(err) });
+            toast.show({
+              variant: "error",
+              message: "Failed to write heap snapshot",
+            });
+          }
+        },
+      },
+    ]);
   });
 
   /**
