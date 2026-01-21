@@ -99,6 +99,35 @@ useKeyboard((e: KeyEvent) => {
    <box><text><span>Hello</span></text></box>
    ```
 
+## macOS-Specific Considerations
+
+1. **Path Conventions**: macOS uses `~/Library/` paths:
+   - Logs: `~/Library/Logs/Ralph/`
+   - Config/State: `~/Library/Application Support/Ralph/`
+   - Cache: `~/Library/Caches/Ralph/`
+
+2. **Terminal Detection**: Check `TERM_PROGRAM` environment variable:
+   - `Apple_Terminal` = Terminal.app (limited capabilities)
+   - `iTerm.app` = iTerm2 (full Kitty protocol support)
+   - `ghostty` = Ghostty (full support)
+
+3. **Terminal.app Limitations**:
+   - No Kitty keyboard protocol support
+   - No modifyOtherKeys support
+   - Falls back to raw stdin keyboard handling
+   - Keyboard fallback timeout: 3 seconds (vs 5s for other Unix terminals)
+
+4. **Process Management**:
+   - Use `lsof -i :PORT -sTCP:LISTEN -t` to find process by port (netstat doesn't show PIDs on macOS)
+   - SIGHUP is sent when Terminal.app window closes - handle for cleanup
+
+5. **PTY Environment Variables**: Preserve these for child processes:
+   - `TERM_PROGRAM` - Terminal detection
+   - `TERM_PROGRAM_VERSION` - Version info
+   - `LANG` / `LC_ALL` - UTF-8 encoding (default: `en_US.UTF-8`)
+
+6. **Shell Default**: macOS Catalina+ uses `zsh` as default shell, not `bash`
+
 ## Local Development & Building
 
 
