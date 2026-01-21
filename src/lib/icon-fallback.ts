@@ -1,4 +1,5 @@
 import { getCapabilities } from "./terminal-capabilities";
+import { getToolClassification, parseMcpToolName } from "./tool-classification";
 
 /**
  * Icon style based on terminal capabilities.
@@ -54,7 +55,7 @@ export function getIcon(iconSet: IconSet): string {
 /**
  * Common icon sets for tools and states.
  */
-export const ICON_SETS = {
+export const ICON_SETS: Record<string, IconSet> = {
   read: {
     nerd: '󰈞',
     unicode: '📖',
@@ -75,6 +76,94 @@ export const ICON_SETS = {
     unicode: '💻',
     ascii: '[BASH]',
   },
+  glob: {
+    nerd: '',
+    unicode: '📁',
+    ascii: '[GLOB]',
+  },
+  grep: {
+    nerd: '󰱽',
+    unicode: '🔍',
+    ascii: '[GREP]',
+  },
+  task: {
+    nerd: '󰙨',
+    unicode: '📋',
+    ascii: '[TASK]',
+  },
+  todowrite: {
+    nerd: '󰗡',
+    unicode: '☑️',
+    ascii: '[TODO]',
+  },
+  todoread: {
+    nerd: '󰗡',
+    unicode: '📃',
+    ascii: '[TODO]',
+  },
+  thought: {
+    nerd: '󰋚',
+    unicode: '💭',
+    ascii: '[THINK]',
+  },
+  lsp: {
+    nerd: '󰅥',
+    unicode: '⚙️',
+    ascii: '[LSP]',
+  },
+  websearch: {
+    nerd: '󰖟',
+    unicode: '🌐',
+    ascii: '[WEB]',
+  },
+  webfetch: {
+    nerd: '󰖟',
+    unicode: '🌐',
+    ascii: '[FETCH]',
+  },
+  codesearch: {
+    nerd: '󰖟',
+    unicode: '🔎',
+    ascii: '[CODE]',
+  },
+  // MCP-specific icons
+  mcp: {
+    nerd: '󰌘',     // Nerd Font plug icon
+    unicode: '🔌',  // Plug emoji
+    ascii: '[MCP]',
+  },
+  // Well-known MCP server icons
+  tavily: {
+    nerd: '󰖟',
+    unicode: '🌐',
+    ascii: '[TAVILY]',
+  },
+  context7: {
+    nerd: '󰈙',     // Nerd Font document
+    unicode: '📚',
+    ascii: '[C7]',
+  },
+  exa: {
+    nerd: '󰖟',
+    unicode: '🔍',
+    ascii: '[EXA]',
+  },
+  gh: {
+    nerd: '',
+    unicode: '🐙',
+    ascii: '[GH]',
+  },
+  github: {
+    nerd: '',
+    unicode: '🐙',
+    ascii: '[GH]',
+  },
+  brave: {
+    nerd: '󰖟',
+    unicode: '🦁',
+    ascii: '[BRAVE]',
+  },
+  // Generic success/error icons
   success: {
     nerd: '✓',
     unicode: '✔',
@@ -90,10 +179,10 @@ export const ICON_SETS = {
     unicode: '●',
     ascii: '[...]',
   },
-  thought: {
-    nerd: '󰋚',
-    unicode: '💭',
-    ascii: '[THINK]',
+  custom: {
+    nerd: '󰏗',     // Package icon
+    unicode: '📦',
+    ascii: '[TOOL]',
   },
 };
 
@@ -102,7 +191,7 @@ export const ICON_SETS = {
  */
 export function getToolIcon(toolName: string): string {
   const normalized = toolName.toLowerCase();
-  const iconSet = ICON_SETS[normalized as keyof typeof ICON_SETS];
+  const iconSet = ICON_SETS[normalized];
   
   if (iconSet) {
     return getIcon(iconSet);
@@ -110,8 +199,82 @@ export function getToolIcon(toolName: string): string {
   
   // Generic tool icon
   return getIcon({
-    nerd: '',
+    nerd: '󰏗',
     unicode: '🔧',
     ascii: `[${toolName.toUpperCase()}]`,
   });
+}
+
+/**
+ * Get icon for a tool with full terminal capability awareness.
+ * This function uses the tool classification system to determine the best icon.
+ * 
+ * @param toolName - The name of the tool (e.g., "read", "tavily_search")
+ * @returns The appropriate icon string for the current terminal
+ */
+export function getToolIconWithFallback(toolName: string): string {
+  const style = getIconStyle();
+  const classification = getToolClassification(toolName);
+  
+  // For built-in tools, use their specific icon sets
+  const normalizedName = toolName.toLowerCase();
+  const builtInSet = ICON_SETS[normalizedName];
+  if (builtInSet) {
+    return getIcon(builtInSet);
+  }
+  
+  // For MCP tools, try to use the server's icon set
+  const mcpInfo = parseMcpToolName(toolName);
+  if (mcpInfo.isMcp && mcpInfo.serverName) {
+    const serverSet = ICON_SETS[mcpInfo.serverName];
+    if (serverSet) {
+      return getIcon(serverSet);
+    }
+    // Fall back to generic MCP icon
+    return getIcon(ICON_SETS.mcp);
+  }
+  
+  // For custom tools, use classification icon based on style
+  switch (style) {
+    case 'nerd':
+      return classification.icon;
+    case 'unicode':
+      // For unicode style, try to find a unicode representation
+      const customSet = ICON_SETS.custom;
+      return customSet?.unicode || classification.fallbackIcon;
+    case 'ascii':
+    default:
+      return classification.fallbackIcon;
+  }
+}
+
+/**
+ * Get the icon set for a tool category.
+ * This provides proper fallback icons based on terminal capabilities.
+ * 
+ * @param category - The tool category
+ * @returns An IconSet with nerd, unicode, and ascii variants
+ */
+export function getCategoryIconSet(category: string): IconSet {
+  switch (category) {
+    case 'file':
+      return ICON_SETS.read;
+    case 'search':
+      return ICON_SETS.grep;
+    case 'execute':
+      return ICON_SETS.bash;
+    case 'web':
+      return ICON_SETS.websearch;
+    case 'planning':
+      return ICON_SETS.task;
+    case 'reasoning':
+      return ICON_SETS.thought;
+    case 'system':
+      return ICON_SETS.lsp;
+    case 'mcp':
+      return ICON_SETS.mcp;
+    case 'custom':
+    default:
+      return ICON_SETS.custom;
+  }
 }
