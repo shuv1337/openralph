@@ -7,6 +7,7 @@ import { parsePlan, validatePlanCompletion } from "./plan.js";
 import { log, checkMemoryThreshold } from "./lib/log";
 import { rateLimitDetector, getFallbackAgent } from "./lib/rate-limit";
 import { stripAnsiCodes } from "./lib/ansi";
+import { killRegisteredProcesses, registerSpawnedProcess, unregisterSpawnedProcess, clearProcessRegistry, findAndRegisterProcessByPort } from "./lib/process-cleanup";
 
 
 import { ErrorHandler, ErrorContext } from "./lib/error-handler";
@@ -270,23 +271,42 @@ async function getOrCreateOpencodeServer(options: {
   const startTime = Date.now();
   
   try {
+    // Cast to include pid property (available after SDK update, undefined in older versions)
     const serverProc = await createOpencodeServer({
       hostname,
       port,
       signal: options.signal,
       timeout: options.serverTimeoutMs ?? 5000,
-    });
+    }) as { url: string; pid?: number; close(): void };
     const elapsed = Date.now() - startTime;
+    
+    // Try to get PID from SDK first (if available), otherwise find by port
+    let serverPid = serverProc.pid;
+    if (!serverPid) {
+      // SDK doesn't expose PID - find the process by port (cross-platform fallback)
+      log("loop", "SDK did not return PID, finding process by port...", { port });
+      serverPid = await findAndRegisterProcessByPort(port) ?? undefined;
+    } else {
+      // SDK returned PID - register it directly
+      registerSpawnedProcess(serverPid);
+      log("loop", "Registered opencode server process for cleanup (from SDK)", { pid: serverPid });
+    }
+    
     log("loop", "opencode server started successfully", { 
       elapsed,
       url: serverProc.url,
+      pid: serverPid,
     });
     
     return {
       url: serverProc.url,
       close: () => {
-        log("loop", "Closing opencode server process");
+        log("loop", "Closing opencode server process", { pid: serverPid });
         serverProc.close();
+        // Unregister since we're explicitly closing
+        if (serverPid) {
+          unregisterSpawnedProcess(serverPid);
+        }
       },
       attached: false,
     };
@@ -595,6 +615,11 @@ async function waitWhilePaused(
 /**
  * Force terminate any remaining opencode child processes on Windows.
  * This is a fallback when graceful shutdown doesn't complete in time.
+ * 
+ * Strategy:
+ * 1. First use the process registry (most reliable)
+ * 2. Then find descendants via tree traversal
+ * 3. Also find any opencode.exe or node.exe that might have become orphaned
  */
 async function forceTerminateOpencodeProcesses(): Promise<void> {
   if (process.platform !== "win32") {
@@ -602,7 +627,16 @@ async function forceTerminateOpencodeProcesses(): Promise<void> {
   }
 
   try {
-    // Get list of all processes with ID, ParentID, Name using PowerShell
+    // STEP 1: Kill all registered processes first (most reliable)
+    const registryResult = await killRegisteredProcesses();
+    if (registryResult.terminatedPids.length > 0) {
+      log("loop", "Killed registered processes", { pids: registryResult.terminatedPids });
+    }
+    
+    // Brief pause to let processes terminate
+    await Bun.sleep(100);
+
+    // STEP 2: Get list of all processes with ID, ParentID, Name using PowerShell
     // Win32_Process is faster than Get-Process for parent/child relationships
     const cmd = [
       "powershell",
@@ -641,12 +675,16 @@ async function forceTerminateOpencodeProcesses(): Promise<void> {
 
     const myPid = process.pid;
     const parentMap = new Map<number, number>();
+    const nameMap = new Map<number, string>();
     const pidsToKill: number[] = [];
 
     // Build process tree map
     for (const p of processes) {
       if (p && typeof p.ProcessId === 'number') {
         parentMap.set(p.ProcessId, p.ParentProcessId);
+        if (p.Name) {
+          nameMap.set(p.ProcessId, String(p.Name).toLowerCase());
+        }
       }
     }
 
@@ -671,8 +709,29 @@ async function forceTerminateOpencodeProcesses(): Promise<void> {
       }
     }
 
+    // STEP 3: Also find any orphaned opencode.exe or node.exe processes
+    // These may have been spawned by opencode and now have dead parents
+    const targetProcessNames = ["opencode.exe", "node.exe"];
+    for (const p of processes) {
+      if (!p || typeof p.ProcessId !== 'number') continue;
+      if (p.ProcessId === myPid) continue; // Don't kill ourselves
+      
+      const name = nameMap.get(p.ProcessId);
+      if (!name) continue;
+      
+      // Check if this is a target process that's not already in our kill list
+      if (targetProcessNames.includes(name) && !pidsToKill.includes(p.ProcessId)) {
+        const parentPid = parentMap.get(p.ProcessId);
+        // If parent doesn't exist (orphaned) or parent is dead
+        if (!parentPid || !parentMap.has(parentPid)) {
+          log("loop", "Found orphaned process to kill", { pid: p.ProcessId, name, parentPid });
+          pidsToKill.push(p.ProcessId);
+        }
+      }
+    }
+
     if (pidsToKill.length > 0) {
-      log("loop", `Terminating ${pidsToKill.length} descendant processes`, { pids: pidsToKill });
+      log("loop", `Terminating ${pidsToKill.length} descendant/orphaned processes`, { pids: pidsToKill });
       
       // Kill each identified descendant tree
       // Using /T here as well for good measure, although pidsToKill already contains 
@@ -953,6 +1012,14 @@ export async function runLoop(
           const { done, total, error } = await parsePlan(options.planFile);
           log("loop", "Plan parsed", { done, total, error });
           callbacks.onTasksUpdated(done, total, error);
+          
+          // Early exit: If all tasks are complete, don't start a new session
+          // This prevents the loop from continuing when the PRD shows all tasks done
+          if (total > 0 && done === total && !error) {
+            log("loop", "All tasks complete - exiting loop early", { done, total });
+            callbacks.onComplete();
+            break;
+          }
         } else {
           log("loop", "Debug mode: skipping plan file validation");
         }
@@ -1052,9 +1119,10 @@ export async function runLoop(
             });
           }
         }, 10000);
-        // Track streamed text parts by ID - stores text we've already logged
+
+        // Track streamed text parts by ID - stores length of text we've already logged
         // so we only emit complete lines, not every streaming delta
-        const loggedTextByPartId = new Map<string, string>();
+        const loggedLengthByPartId = new Map<string, number>();
         
         log("loop", "Starting event stream iteration...");
         for await (const event of events.stream) {
@@ -1178,16 +1246,22 @@ export async function runLoop(
               // For file tools: use filePath or path
               // For bash: use command
               // For others: compact JSON of args
+              // TRUNCATION: Truncate massive details to avoid memory bloat
               let detail: string | undefined;
+              const MAX_DETAIL_LEN = 1000;
+
+              const getTruncated = (s: string) => 
+                s.length > MAX_DETAIL_LEN ? s.slice(0, MAX_DETAIL_LEN - 3) + "..." : s;
+
               if (input.filePath) {
-                detail = String(input.filePath);
+                detail = getTruncated(String(input.filePath));
               } else if (input.path) {
-                detail = String(input.path);
+                detail = getTruncated(String(input.path));
               } else if (input.command) {
-                detail = String(input.command);
+                detail = getTruncated(String(input.command));
               } else if (Object.keys(input).length > 0) {
                 // Compact JSON for other tools with args
-                detail = JSON.stringify(input);
+                detail = getTruncated(JSON.stringify(input));
               }
 
               // Mark file read tools as verbose (dimmed display)
@@ -1215,11 +1289,11 @@ export async function runLoop(
               }
 
               const partId = part.id;
-              const previouslyLogged = loggedTextByPartId.get(partId) || "";
+              const previouslyLoggedLength = loggedLengthByPartId.get(partId) || 0;
               const fullText = part.text;
               
               // Find new content that hasn't been logged yet
-              const newContent = fullText.slice(previouslyLogged.length);
+              const newContent = fullText.slice(previouslyLoggedLength);
               
               // Split into lines - only emit lines that are complete (have \n after them)
               const lines = newContent.split("\n");
@@ -1247,10 +1321,10 @@ export async function runLoop(
               
               // Update tracked position to include all complete lines we've logged
               // Keep partial last line for next update
-              const completedLength = previouslyLogged.length + 
+              const completedLength = previouslyLoggedLength + 
                 (lines.length > 1 ? newContent.lastIndexOf("\n") + 1 : 0);
-              if (completedLength > previouslyLogged.length) {
-                loggedTextByPartId.set(partId, fullText.slice(0, completedLength));
+              if (completedLength > previouslyLoggedLength) {
+                loggedLengthByPartId.set(partId, completedLength);
               }
             }
 
@@ -1335,7 +1409,7 @@ export async function runLoop(
         }
 
         // Clear tracking Map to prevent memory leak across iterations
-        loggedTextByPartId.clear();
+        loggedLengthByPartId.clear();
 
         // Cleanup abort listener
         signal.removeEventListener("abort", onParentAbort);
@@ -1543,6 +1617,14 @@ async function runPtyLoop(
         const { done, total, error } = await parsePlan(options.planFile);
         log("loop", "Plan parsed", { done, total, error });
         callbacks.onTasksUpdated(done, total, error);
+        
+        // Early exit: If all tasks are complete, don't start a new session
+        // This prevents the loop from continuing when the PRD shows all tasks done
+        if (total > 0 && done === total && !error) {
+          log("loop", "PTY: All tasks complete - exiting loop early", { done, total });
+          callbacks.onComplete();
+          break;
+        }
       } else {
         log("loop", "Debug mode: skipping plan file validation");
       }
