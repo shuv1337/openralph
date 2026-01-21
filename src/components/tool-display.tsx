@@ -60,6 +60,8 @@ export const ToolDisplay: Component<ToolDisplayProps> = (props) => {
       case 'reasoning': return t().toolReasoning;
       case 'planning': return t().toolPlanning;
       case 'system': return t().toolSystem;
+      case 'mcp': return t().toolMcp;
+      case 'custom': return t().text;
       default: return t().text;
     }
   });

@@ -13,6 +13,7 @@ export interface ExtendedTheme extends Theme {
   toolReasoning: string;  // Thought/reasoning
   toolPlanning: string;   // Planning tools
   toolSystem: string;     // System/LSP tools
+  toolMcp: string;        // MCP server tools
   
   // UI element enhancements
   iteration: string;      // Iteration headers
@@ -34,6 +35,7 @@ export const EXTENDED_THEME_MAPPINGS: Record<string, Partial<ExtendedTheme>> = {
     toolReasoning: '#bb9af7', // Purple
     toolPlanning: '#c0caf5',  // Text
     toolSystem: '#414868',    // Dim
+    toolMcp: '#ff9e64',       // Orange - distinctive for MCP tools
     iteration: '#414868',
     duration: '#9ece6a',
     commit: '#7aa2f7',
@@ -48,6 +50,7 @@ export const EXTENDED_THEME_MAPPINGS: Record<string, Partial<ExtendedTheme>> = {
     toolReasoning: '#c792ea', // Mauve
     toolPlanning: '#d6deeb',  // Text
     toolSystem: '#4b6479',    // Dim
+    toolMcp: '#f78c6c',       // Orange - distinctive for MCP tools
     iteration: '#4b6479',
     duration: '#addb67',
     commit: '#82aaff',
@@ -62,6 +65,7 @@ export const EXTENDED_THEME_MAPPINGS: Record<string, Partial<ExtendedTheme>> = {
     toolReasoning: '#b16286', // Purple
     toolPlanning: '#ebdbb2',
     toolSystem: '#665c54',
+    toolMcp: '#fe8019',       // Orange - distinctive for MCP tools
     iteration: '#3c3836',
     duration: '#98971a',
     commit: '#458588',
@@ -76,6 +80,7 @@ export const EXTENDED_THEME_MAPPINGS: Record<string, Partial<ExtendedTheme>> = {
     toolReasoning: '#ff79c6', // Pink
     toolPlanning: '#f8f8f2',
     toolSystem: '#44475a',
+    toolMcp: '#ffb86c',       // Orange - distinctive for MCP tools
     iteration: '#44475a',
     duration: '#50fa7b',
     commit: '#8be9fd',
@@ -90,6 +95,7 @@ export const EXTENDED_THEME_MAPPINGS: Record<string, Partial<ExtendedTheme>> = {
     toolReasoning: '#cba6f7', // Mauve
     toolPlanning: '#cdd6f4',  // Text
     toolSystem: '#585b70',    // Surface2
+    toolMcp: '#fab387',       // Peach - distinctive for MCP tools
     iteration: '#45475a',     // Surface1
     duration: '#a6e3a1',
     commit: '#89b4fa',
@@ -124,6 +130,7 @@ export function getExtendedTheme(baseTheme: Theme, name: string = 'nightowl'): E
     toolReasoning: mapping.toolReasoning || baseTheme.warning || baseTheme.accent,
     toolPlanning: mapping.toolPlanning || baseTheme.text,
     toolSystem: mapping.toolSystem || baseTheme.textMuted,
+    toolMcp: mapping.toolMcp || baseTheme.accent || baseTheme.warning,  // MCP tools get distinctive color
     iteration: mapping.iteration || baseTheme.textMuted,
     duration: mapping.duration || baseTheme.success,
     commit: mapping.commit || baseTheme.info,
