@@ -1,4 +1,4 @@
-import { createOpencodeServer, createOpencodeClient } from "@opencode-ai/sdk";
+import { createOpencodeClient, createOpencodeServer } from "@opencode-ai/sdk";
 import { getAdapter, initializeAdapters } from "./adapters/registry.js";
 import type { LoopOptions, PersistedState, SessionInfo, ToolEvent } from "./state.js";
 import type { SandboxConfig, RateLimitState, ActiveAgentState } from "./components/tui-types";
@@ -28,6 +28,15 @@ function applySteeringContext(prompt: string): string {
 }
 
 const DEFAULT_PORT = 4190;
+
+function getServerAuthHeader(): string | undefined {
+  const password = process.env.OPENCODE_SERVER_PASSWORD || process.env.RALPH_SERVER_PASSWORD;
+  if (!password) return undefined;
+
+  const username = process.env.OPENCODE_SERVER_USERNAME || process.env.RALPH_SERVER_USERNAME || "opencode";
+  const token = Buffer.from(`${username}:${password}`).toString("base64");
+  return `Basic ${token}`;
+}
 
 // Backoff configuration
 const BACKOFF_BASE_MS = 5000; // 5 seconds
@@ -142,9 +151,12 @@ export async function checkServerHealth(
     if (abortSignal) {
       signals.push(abortSignal);
     }
+
+    const authHeader = getServerAuthHeader();
     
     const response = await fetch(`${url}/global/health`, {
       signal: AbortSignal.any(signals),
+      headers: authHeader ? { Authorization: authHeader } : undefined,
     });
     
     if (!response.ok) {
@@ -207,18 +219,8 @@ export async function connectToExternalServer(
  * Uses the /global/health endpoint.
  */
 async function tryConnectToExistingServer(url: string): Promise<boolean> {
-  try {
-    const response = await fetch(`${url}/global/health`, {
-      signal: AbortSignal.timeout(1000),
-    });
-    if (response.ok) {
-      const data = await response.json();
-      return data.healthy === true;
-    }
-  } catch {
-    // Server not running or not responding
-  }
-  return false;
+  const health = await checkServerHealth(url, 1000);
+  return health.ok;
 }
 
 /**
@@ -233,8 +235,15 @@ async function getOrCreateOpencodeServer(options: {
   serverUrl?: string;
   serverTimeoutMs?: number;
 }): Promise<{ url: string; close(): void; attached: boolean }> {
+  log("loop", "getOrCreateOpencodeServer called", { 
+    serverUrl: options.serverUrl,
+    port: options.port,
+    hostname: options.hostname,
+  });
+
   // If explicit server URL provided, connect to it directly
   if (options.serverUrl) {
+    log("loop", "Using explicit server URL", { serverUrl: options.serverUrl });
     return connectToExternalServer(options.serverUrl, {
       timeoutMs: options.serverTimeoutMs,
       signal: options.signal,
@@ -246,6 +255,7 @@ async function getOrCreateOpencodeServer(options: {
   const url = `http://${hostname}:${port}`;
 
   // Try to attach to existing server first
+  log("loop", "Checking for existing server", { url });
   if (await tryConnectToExistingServer(url)) {
     log("loop", "Attached to existing server", { url });
     return {
@@ -255,13 +265,40 @@ async function getOrCreateOpencodeServer(options: {
     };
   }
 
-  // Start new server
-  log("loop", "Starting new server...");
-  const server = await createOpencodeServer(options);
-  return {
-    ...server,
-    attached: false,
-  };
+  // Start new server via SDK
+  log("loop", "No existing server found, spawning opencode server via SDK...", { port, hostname });
+  const startTime = Date.now();
+  
+  try {
+    const serverProc = await createOpencodeServer({
+      hostname,
+      port,
+      signal: options.signal,
+      timeout: options.serverTimeoutMs ?? 5000,
+    });
+    const elapsed = Date.now() - startTime;
+    log("loop", "opencode server started successfully", { 
+      elapsed,
+      url: serverProc.url,
+    });
+    
+    return {
+      url: serverProc.url,
+      close: () => {
+        log("loop", "Closing opencode server process");
+        serverProc.close();
+      },
+      attached: false,
+    };
+  } catch (error) {
+    const elapsed = Date.now() - startTime;
+    log("loop", "ERROR: Failed to spawn opencode serve", { 
+      elapsed,
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
+    throw error;
+  }
 }
 
 /**
@@ -302,10 +339,13 @@ export async function createDebugSession(options: {
         return fetch(req);
       };
     };
+
+    const authHeader = getServerAuthHeader();
     
     debugClient = createOpencodeClient({ 
       baseUrl: debugServer.url, 
-      fetch: createTimeoutlessFetch() 
+      fetch: createTimeoutlessFetch(),
+      headers: authHeader ? { Authorization: authHeader } : undefined,
     } as any);
     
     log("loop", "Debug mode: server/client ready", { url: debugServer.url });
@@ -795,7 +835,12 @@ export async function runLoop(
     });
     log("loop", "Server ready", { url: server.url, attached: server.attached });
     
-    const client = createOpencodeClient({ baseUrl: server.url, fetch: createTimeoutlessFetch() } as any);
+    const authHeader = getServerAuthHeader();
+    const client = createOpencodeClient({ 
+      baseUrl: server.url, 
+      fetch: createTimeoutlessFetch(),
+      headers: authHeader ? { Authorization: authHeader } : undefined,
+    } as any);
     log("loop", "Client created");
 
     // Report initial model from options
@@ -867,7 +912,14 @@ export async function runLoop(
       // Iteration start (10.11)
       iteration++;
       const iterationStartTime = Date.now();
-      log("loop", "Iteration starting", { iteration });
+      log("loop", "=== ITERATION STARTING ===", { 
+        iteration, 
+        serverUrl: server?.url,
+        serverAttached: server?.attached,
+        model: currentModel,
+        agent: options.agent,
+        planFile: options.planFile,
+      });
       callbacks.onIterationStart(iteration);
       if (signal.aborted) break;
 
@@ -905,15 +957,25 @@ export async function runLoop(
         const { providerID, modelID } = parseModel(currentModel);
 
         // Create session (10.13)
-        log("loop", "Creating session...");
+        log("loop", "Creating session...", { serverUrl: server!.url });
+        const sessionStartTime = Date.now();
         const sessionResult = await client.session.create();
+        const sessionElapsed = Date.now() - sessionStartTime;
+        
         if (!sessionResult.data) {
-          log("loop", "ERROR: Failed to create session");
+          log("loop", "ERROR: Failed to create session", { 
+            elapsed: sessionElapsed,
+            response: JSON.stringify(sessionResult).slice(0, 500),
+          });
           throw new Error("Failed to create session");
         }
         const sessionId = sessionResult.data.id;
         activeSessionId = sessionId; // Track for cleanup
-        log("loop", "Session created", { sessionId });
+        log("loop", "Session created successfully", { 
+          sessionId, 
+          elapsed: sessionElapsed,
+          iteration,
+        });
 
         // Track whether current session is active (for steering mode guard)
         let sessionActive = true;
@@ -946,7 +1008,7 @@ export async function runLoop(
 
         // Subscribe to events - the SSE connection is established when we start iterating
         // Use a local AbortController so we can abort the subscription explicitly on completion
-        log("loop", "Subscribing to events...");
+        log("loop", "Subscribing to events...", { sessionId, serverUrl: server!.url });
         activeSubscriptionController = new AbortController();
         const subscriptionSignal = activeSubscriptionController.signal;
         
@@ -958,19 +1020,52 @@ export async function runLoop(
           activeSubscriptionController?.abort();
         }, { once: true });
         
+        const subscribeStartTime = Date.now();
+        log("loop", "Calling client.event.subscribe()...");
         const events = await client.event.subscribe({ signal: subscriptionSignal });
+        log("loop", "client.event.subscribe() returned", { 
+          elapsed: Date.now() - subscribeStartTime,
+          hasStream: !!events?.stream,
+        });
 
         let promptSent = false;
+        let serverConnectedReceived = false;
+        let eventCount = 0;
 
         // Set idle state while waiting for LLM response
         callbacks.onIdleChanged(true);
 
         let receivedFirstEvent = false;
+        
+        // Timeout to detect if server.connected never fires
+        const serverConnectedTimeout = setTimeout(() => {
+          if (!serverConnectedReceived && !signal.aborted && !subscriptionSignal.aborted) {
+            log("loop", "WARNING: server.connected event not received within 10s", {
+              sessionId,
+              eventCount,
+              promptSent,
+            });
+          }
+        }, 10000);
         // Track streamed text parts by ID - stores text we've already logged
         // so we only emit complete lines, not every streaming delta
         const loggedTextByPartId = new Map<string, string>();
         
+        log("loop", "Starting event stream iteration...");
         for await (const event of events.stream) {
+          eventCount++;
+          
+          // Log all events for debugging (first 20 events in detail, then summarize)
+          if (eventCount <= 20 || event.type === "server.connected" || event.type === "session.idle" || event.type === "session.error") {
+            log("loop", "SSE event received", { 
+              eventCount, 
+              type: event.type,
+              hasProperties: !!event.properties,
+            });
+          } else if (eventCount === 21) {
+            log("loop", "SSE events continuing (reducing log verbosity)...");
+          }
+          
           await waitWhilePaused(pauseState, callbacks, signal, {
             onPause: async () => {
               if (activeSessionId) {
@@ -987,8 +1082,19 @@ export async function runLoop(
           // When SSE connection is established, send the prompt
           // This ensures we don't miss any events due to race conditions
           if (event.type === "server.connected" && !promptSent) {
+            serverConnectedReceived = true;
+            clearTimeout(serverConnectedTimeout);
             promptSent = true;
-            log("loop", "Sending prompt", { providerID, modelID });
+            
+            const promptStartTime = Date.now();
+            log("loop", "server.connected received, sending prompt", { 
+              providerID, 
+              modelID,
+              eventCount,
+              sessionId,
+              promptLength: promptText.length,
+              agent: options.agent,
+            });
 
             // Fire prompt in background - don't block event loop
             client.session.prompt({
@@ -998,9 +1104,32 @@ export async function runLoop(
                 model: { providerID, modelID },
                 ...(options.agent && { agent: options.agent }),
               },
+            }).then(() => {
+              const elapsed = Date.now() - promptStartTime;
+              log("loop", "Prompt API call completed", { sessionId, elapsed });
             }).catch((e) => {
-              log("loop", "Prompt error", { error: String(e) });
+              const elapsed = Date.now() - promptStartTime;
+              log("loop", "PROMPT ERROR - API call failed", { 
+                error: String(e), 
+                sessionId,
+                elapsed,
+                stack: e instanceof Error ? e.stack : undefined,
+              });
+              // Throw to break out of the event loop since prompt failed
+              // This prevents hanging indefinitely waiting for events that won't come
             });
+
+            // Set up timeout to detect if no events arrive after prompt
+            // This helps diagnose hangs where prompt succeeds but opencode doesn't process it
+            setTimeout(() => {
+              if (promptSent && eventCount <= 1 && !signal.aborted && !subscriptionSignal.aborted) {
+                log("loop", "WARNING: No events received 15s after sending prompt", {
+                  sessionId,
+                  eventCount,
+                  serverConnectedReceived,
+                });
+              }
+            }, 15000);
 
             continue;
           }
@@ -1139,7 +1268,8 @@ export async function runLoop(
 
           // Session completion detection (10.17)
           if (event.type === "session.idle" && event.properties.sessionID === sessionId) {
-            log("loop", "Session idle, breaking event loop");
+            log("loop", "Session idle, breaking event loop", { eventCount, sessionId });
+            clearTimeout(serverConnectedTimeout);
             sessionActive = false;
             activeSessionId = null; // Clear tracked session
             activeSubscriptionController = null; // Clear subscription controller
@@ -1158,7 +1288,8 @@ export async function runLoop(
               errorMessage = String(props.error.data.message);
             }
             
-            log("loop", "Session error", { errorMessage });
+            log("loop", "Session error", { errorMessage, eventCount, sessionId });
+            clearTimeout(serverConnectedTimeout);
             sessionActive = false;
             activeSessionId = null; // Clear tracked session
             activeSubscriptionController = null; // Clear subscription controller
