@@ -1,17 +1,18 @@
 import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
-import { join } from "node:path";
 
-// Mock homedir to return a consistent path for testing
-mock.module("node:os", () => ({
-  homedir: () => "/Users/testuser",
-}));
+// Skip entire test file on non-macOS platforms
+// These tests require macOS to properly test Library/ paths
+describe.skipIf(process.platform !== "darwin")("paths - macOS", () => {
+  // Mock homedir to return a consistent path for testing
+  mock.module("node:os", () => ({
+    homedir: () => "/Users/testuser",
+  }));
 
-// Mock node:path to use posix behavior for these tests
-mock.module("node:path", () => ({
-  join: (...args: string[]) => args.join("/"),
-}));
+  // Mock node:path to use posix behavior for these tests
+  mock.module("node:path", () => ({
+    join: (...args: string[]) => args.join("/"),
+  }));
 
-describe("paths - macOS", () => {
   const originalPlatform = process.platform;
   const originalEnv = { ...process.env };
 

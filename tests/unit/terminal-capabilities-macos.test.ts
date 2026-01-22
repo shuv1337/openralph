@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { detectCapabilities, _resetCapabilitiesCache } from "../../src/lib/terminal-capabilities";
+import { detectCapabilities, resetCapabilitiesCache } from "../../src/lib/terminal-capabilities";
 
 describe("terminal-capabilities - macOS", () => {
   const originalPlatform = process.platform;
@@ -7,13 +7,13 @@ describe("terminal-capabilities - macOS", () => {
 
   beforeEach(() => {
     Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
-    _resetCapabilitiesCache();
+    resetCapabilitiesCache();
   });
 
   afterEach(() => {
     Object.defineProperty(process, "platform", { value: originalPlatform, configurable: true });
     process.env = { ...originalEnv };
-    _resetCapabilitiesCache();
+    resetCapabilitiesCache();
   });
 
   describe("macOS terminal detection", () => {

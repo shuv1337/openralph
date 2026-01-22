@@ -191,13 +191,21 @@ describe("launchTerminal", () => {
 
   it("should replace {cmd} placeholder in args", async () => {
     // This test verifies the placeholder replacement logic works
-    // We use echo which outputs its args
-    const mockTerminal: KnownTerminal = {
-      name: "Echo Test",
-      command: "echo",
-      args: ["prefix-{cmd}-suffix"],
-      platforms: ["darwin", "linux", "win32"],
-    };
+    // On Windows, we use cmd /c echo; on Unix, we use /bin/echo
+    const isWindows = process.platform === "win32";
+    const mockTerminal: KnownTerminal = isWindows 
+      ? {
+          name: "CMD Echo Test",
+          command: "cmd",
+          args: ["/c", "echo prefix-{cmd}-suffix"],
+          platforms: ["win32"],
+        }
+      : {
+          name: "Echo Test",
+          command: "echo",
+          args: ["prefix-{cmd}-suffix"],
+          platforms: ["darwin", "linux"],
+        };
 
     // The function should process the args correctly
     // We can't easily verify the output, but we can verify it doesn't error
