@@ -239,6 +239,15 @@ export async function launchTerminal(
   cmd: string
 ): Promise<LaunchResult> {
   try {
+    // Verify command exists first to provide a better error
+    const exists = await commandExists(terminal.command);
+    if (!exists) {
+      return {
+        success: false,
+        error: `Terminal command not found: ${terminal.command}`,
+      };
+    }
+
     // Apply Windows-specific escaping if needed
     const escapedCmd = terminal.platforms.includes("win32")
       ? escapeForWindowsShell(cmd)
@@ -248,14 +257,11 @@ export async function launchTerminal(
     const args = terminal.args.map((arg) => arg.replace("{cmd}", escapedCmd));
 
     // Spawn detached process
-    const proc = Bun.spawn([terminal.command, ...args], {
+    Bun.spawn([terminal.command, ...args], {
       stdin: "ignore",
       stdout: "ignore",
       stderr: "ignore",
     });
-
-    // Unref so parent process can exit
-    proc.unref();
 
     return { success: true };
   } catch (error) {

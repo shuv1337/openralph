@@ -180,6 +180,7 @@ describe("Headless Input - Event Types", () => {
       "exit",
       "pause",
       "resume",
+      "terminal",
       "interrupt",
       "force_quit",
       "eof",
@@ -191,5 +192,74 @@ describe("Headless Input - Event Types", () => {
     for (const type of expectedTypes) {
       expect(typeof type).toBe("string");
     }
+  });
+});
+
+describe("Headless Input - Shortcut Keys", () => {
+  let controller: HeadlessInputController;
+  let events: InputEvent[];
+  let originalIsTTY: any;
+  let originalSetRawMode: any;
+  let originalResume: any;
+  let originalPause: any;
+
+  beforeEach(() => {
+    resetCapabilitiesCache();
+    events = [];
+
+    // Mock process.stdin properties to allow startRawInput to succeed
+    originalIsTTY = process.stdin.isTTY;
+    originalSetRawMode = process.stdin.setRawMode;
+    originalResume = process.stdin.resume;
+    originalPause = process.stdin.pause;
+
+    Object.defineProperty(process.stdin, "isTTY", { value: true, configurable: true });
+    process.stdin.setRawMode = (process.stdin.setRawMode || (() => {})) as any;
+    process.stdin.resume = (process.stdin.resume || (() => {})) as any;
+    process.stdin.pause = (process.stdin.pause || (() => {})) as any;
+
+    controller = createHeadlessInputController({
+      showFeedback: false,
+      handleSignals: false,
+    });
+    controller.onInput((e) => events.push(e));
+    controller.start();
+  });
+
+  afterEach(() => {
+    controller.stop();
+
+    // Restore original process.stdin properties
+    Object.defineProperty(process.stdin, "isTTY", { value: originalIsTTY, configurable: true });
+    process.stdin.setRawMode = originalSetRawMode;
+    process.stdin.resume = originalResume;
+    process.stdin.pause = originalPause;
+
+    resetCapabilitiesCache();
+  });
+
+  it("should emit 'terminal' event when 't' is pressed", () => {
+    process.stdin.emit("data", Buffer.from("t"));
+    expect(events.some(e => e.type === "terminal" && e.key === "t")).toBe(true);
+  });
+
+  it("should emit 'terminal' event when 'T' is pressed", () => {
+    process.stdin.emit("data", Buffer.from("T"));
+    expect(events.some(e => e.type === "terminal" && e.key === "T")).toBe(true);
+  });
+
+  it("should emit 'pause' event when 'p' is pressed", () => {
+    process.stdin.emit("data", Buffer.from("p"));
+    expect(events.some(e => e.type === "pause" && e.key === "p")).toBe(true);
+  });
+
+  it("should emit 'resume' event when 'r' is pressed", () => {
+    process.stdin.emit("data", Buffer.from("r"));
+    expect(events.some(e => e.type === "resume" && e.key === "r")).toBe(true);
+  });
+
+  it("should emit 'exit' event when 'q' is pressed", () => {
+    process.stdin.emit("data", Buffer.from("q"));
+    expect(events.some(e => e.type === "exit" && e.key === "q")).toBe(true);
   });
 });

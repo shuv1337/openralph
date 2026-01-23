@@ -212,7 +212,7 @@ describe("launchTerminal", () => {
     const result = await launchTerminal(mockTerminal, "TESTVALUE");
     
     // echo should succeed
-    expect(result.success).toBe(true);
+    expect(result.success, `Launch failed: ${result.error}`).toBe(true);
   });
 
   it("should return error for non-existent command", async () => {

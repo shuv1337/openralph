@@ -9,6 +9,9 @@
  * - Ctrl+D (EOF): Exit when input is empty (Unix/macOS)
  * - Ctrl+\ (SIGQUIT): Force quit (Unix/macOS)
  * - q/Q: Quick exit command
+ * - p/P: Pause execution
+ * - r/R: Resume execution
+ * - t/T: Launch terminal attached to session
  * - /exit, /quit: Typed exit commands
  *
  * Features:
@@ -31,6 +34,7 @@ export type InputEventType =
   | "exit"        // User requested exit
   | "pause"       // User requested pause (p key)
   | "resume"      // User requested resume (r key)
+  | "terminal"    // User requested terminal launch (t key)
   | "interrupt"   // Ctrl+C pressed
   | "force_quit"  // Ctrl+\ or force exit
   | "eof"         // Ctrl+D pressed
@@ -258,6 +262,12 @@ export function createHeadlessInputController(
       // Resume with 'r'
       if (char === "r" && inputBuffer.length === 0) {
         emit({ type: "resume", key, rawBuffer });
+        return;
+      }
+
+      // Terminal launch with 't'
+      if (char === "t" && inputBuffer.length === 0) {
+        emit({ type: "terminal", key, rawBuffer });
         return;
       }
 
