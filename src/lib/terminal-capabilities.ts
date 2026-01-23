@@ -293,6 +293,10 @@ export function detectCapabilities(): TerminalCapabilities {
   // We detect this by checking if stdout is a TTY or if we're on Windows 10+.
   // Note: In compiled binaries, isTTY might be undefined but colors still work.
   const isModernWindowsVersion = isWindows && (() => {
+    // Allow mocking for tests
+    if (env.RALPH_MOCK_WINDOWS_VERSION === 'legacy') return false;
+    if (env.RALPH_MOCK_WINDOWS_VERSION === 'modern') return true;
+    
     // Check for Windows 10+ via OS release (build 10240+)
     // os.release() returns something like "10.0.22631" for Windows 11
     try {
@@ -317,7 +321,7 @@ export function detectCapabilities(): TerminalCapabilities {
     isModernWindowsVersion
   );
   
-  const isLegacyWindows = isWindows && !isModernTermOnWindows;
+  const isLegacyWindows = isWindows && (!isModernTermOnWindows || env.TERM === 'dumb');
 
   // macOS terminal detection
   const isTerminalApp = termProgram === 'Apple_Terminal';

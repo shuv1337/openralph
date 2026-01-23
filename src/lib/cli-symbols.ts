@@ -149,13 +149,13 @@ export const TOOL_TYPE_SYMBOLS: Record<string, SymbolSet> = {
 
   // System/integration
   lsp: { unicode: "◎", ascii: "@" }, // Language server
-  mcp: { unicode: "+", ascii: "+" }, // MCP plugin
-  plugin: { unicode: "+", ascii: "+" }, // Generic plugin
+  mcp: { unicode: "⬡", ascii: "+" }, // MCP plugin
+  plugin: { unicode: "⬡", ascii: "+" }, // Generic plugin
 
   // Web/external
   web: { unicode: "◉", ascii: "@" }, // Web/network
   fetch: { unicode: "↓", ascii: "v" }, // Download/fetch
-  api: { unicode: "+", ascii: "+" }, // API call
+  api: { unicode: "⬡", ascii: "+" }, // API call
 
   // Version control
   git: { unicode: "#", ascii: "#" }, // Git/branch

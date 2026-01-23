@@ -44,6 +44,9 @@ describe("Cross-Platform Compatibility Tests", () => {
       delete process.env.ANSICON;
       delete process.env.ConEmuANSI;
       delete process.env.TERM_PROGRAM;
+      delete process.env.TERM;
+      delete process.env.MSYSTEM;
+      process.env.RALPH_MOCK_WINDOWS_VERSION = "legacy";
 
       const caps = detectCapabilities();
       expect(caps.isWindows).toBe(true);
@@ -182,6 +185,10 @@ describe("Cross-Platform Compatibility Tests", () => {
       delete process.env.WT_SESSION;
       delete process.env.ANSICON;
       delete process.env.ConEmuANSI;
+      delete process.env.TERM_PROGRAM;
+      delete process.env.TERM;
+      delete process.env.MSYSTEM;
+      process.env.RALPH_MOCK_WINDOWS_VERSION = "legacy";
       resetCapabilitiesCache();
 
       const banner = renderBanner();
