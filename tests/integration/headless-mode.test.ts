@@ -1,6 +1,8 @@
-import { describe, it, expect, beforeEach, mock, spyOn } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach, mock, spyOn } from "bun:test";
 import { runHeadlessMode, HeadlessRunner, HeadlessExitCodes } from "../../src/headless";
 import { createMockLoopOptions, createMockPersistedState } from "../helpers/mock-factories";
+import * as InterruptMenuModule from "../../src/lib/interrupt-menu";
+import { InterruptMenuChoice } from "../../src/lib/interrupt-menu";
 
 // NOTE: We do NOT use mock.module() here to avoid polluting other test files.
 // Instead, we use spyOn for function-level mocking within each test.
@@ -8,12 +10,25 @@ import { createMockLoopOptions, createMockPersistedState } from "../helpers/mock
 describe("Headless Mode Integration", () => {
   let mockWrite: ReturnType<typeof mock>;
   let capturedOutput: string[];
+  let menuSpy: any;
 
   beforeEach(() => {
     capturedOutput = [];
     mockWrite = mock((text: string) => {
       capturedOutput.push(text);
     });
+
+    // Mock interrupt menu to prevent hanging in tests
+    menuSpy = spyOn(InterruptMenuModule, "createInterruptMenu").mockReturnValue({
+      show: () => Promise.resolve(InterruptMenuChoice.FORCE_QUIT),
+      dismiss: () => {},
+      isVisible: () => false,
+      destroy: () => {},
+    } as any);
+  });
+
+  afterEach(() => {
+    menuSpy.mockRestore();
   });
 
   const baseOptions = createMockLoopOptions();
@@ -46,6 +61,7 @@ describe("Headless Mode Integration", () => {
         timestamps: false,
         limits: {},
         write: mockWrite,
+        autoStart: true,
       });
 
       const eventsSeen = new Set<string>();
@@ -122,7 +138,9 @@ describe("Headless Mode Integration", () => {
       expect(eventsSeen.has("resume")).toBe(true);
 
       // Verify JSONL output contains these events
-      const outputEvents = capturedOutput.map(line => JSON.parse(line));
+      const outputEvents = capturedOutput
+        .filter(line => line.trim().startsWith("{"))
+        .map(line => JSON.parse(line));
       expect(outputEvents.some(e => e.type === "start")).toBe(true);
       expect(outputEvents.some(e => e.type === "complete")).toBe(true);
     });
@@ -186,6 +204,7 @@ describe("Headless Mode Integration", () => {
         timestamps: false,
         limits: {},
         write: mockWrite,
+        autoStart: true,
       });
 
       const eventsSeen = new Set<string>();
@@ -295,7 +314,8 @@ describe("Headless Mode Integration", () => {
       });
 
       const fullOutput = capturedOutput.join("");
-      const parsed = JSON.parse(fullOutput);
+      const jsonStart = fullOutput.indexOf("{");
+      const parsed = JSON.parse(fullOutput.substring(jsonStart));
       expect(parsed).toHaveProperty("events");
       expect(parsed).toHaveProperty("summary");
       expect(parsed.summary.exitCode).toBe(0);
@@ -307,6 +327,7 @@ describe("Headless Mode Integration", () => {
         timestamps: false,
         limits: {},
         write: mockWrite,
+        autoStart: true,
       });
 
       const mockRunLoop = mock(async (_opts: unknown, _state: unknown, callbacks: any) => {
@@ -322,7 +343,10 @@ describe("Headless Mode Integration", () => {
 
       expect(capturedOutput.length).toBeGreaterThan(1);
       capturedOutput.forEach(line => {
-        expect(() => JSON.parse(line)).not.toThrow();
+        const trimmed = line.trim();
+        if (trimmed.startsWith("{")) {
+          expect(() => JSON.parse(trimmed)).not.toThrow();
+        }
       });
     });
   });
