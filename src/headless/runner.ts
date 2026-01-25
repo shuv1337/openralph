@@ -200,9 +200,6 @@ export class HeadlessRunner {
     // Clear terminal buffer at the start of execution (Phase 2, Task 4)
     this.clearBuffer();
 
-    // showBanner handles only the ASCII banner display
-    this.output.showBanner();
-
     // Handle press-to-start feature
     try {
       const shouldWait = await this.shouldWaitForStart();
@@ -1112,9 +1109,11 @@ export class HeadlessRunner {
 
   /**
    * Clear the terminal buffer if interactive (Phase 2, Task 4).
+   * Re-shows the ASCII banner after clearing (Phase 2, Task 5).
    */
   private clearBuffer(): void {
     this.terminalService.clearBuffer(true);
+    this.output?.showBanner();
   }
 
   /**
