@@ -38,13 +38,12 @@ describe("Text Renderer - Icon Mappings", () => {
 
       for (const tool of requiredTools) {
         expect(TOOL_TEXT_MAP[tool]).toBeDefined();
-        expect(TOOL_TEXT_MAP[tool]).toMatch(/^\[.+\]$/);
       }
     });
 
-    it("should have consistent bracket format", () => {
+    it("should have consistent uppercase format", () => {
       for (const [name, text] of Object.entries(TOOL_TEXT_MAP)) {
-        expect(text).toMatch(/^\[[A-Z0-9\-]+\]$/);
+        expect(text).toMatch(/^[A-Z0-9\-]+$/);
       }
     });
   });
@@ -53,13 +52,6 @@ describe("Text Renderer - Icon Mappings", () => {
     it("should have matching entries for all ASCII tools", () => {
       for (const toolName of Object.keys(TOOL_TEXT_MAP)) {
         expect(TOOL_UNICODE_MAP[toolName]).toBeDefined();
-      }
-    });
-
-    it("should use emoji format", () => {
-      for (const [name, unicode] of Object.entries(TOOL_UNICODE_MAP)) {
-        expect(unicode).toMatch(/^\[.+\]$/);
-        expect(unicode.length).toBeGreaterThan(2);
       }
     });
   });
@@ -73,7 +65,7 @@ describe("Text Renderer - Icon Mappings", () => {
 
       for (const status of statuses) {
         expect(STATUS_TEXT_MAP[status]).toBeDefined();
-        expect(STATUS_TEXT_MAP[status]).toMatch(/^\[.+\]$/);
+        expect(STATUS_TEXT_MAP[status]).toMatch(/^[A-Z]+$/);
       }
     });
   });
@@ -94,7 +86,6 @@ describe("Text Renderer - Icon Mappings", () => {
 
       for (const status of statuses) {
         expect(TASK_STATUS_TEXT_MAP[status]).toBeDefined();
-        expect(TASK_STATUS_TEXT_MAP[status]).toMatch(/^\[.\]$/);
       }
     });
   });
@@ -108,7 +99,7 @@ describe("Text Renderer - Icon Mappings", () => {
 
       for (const event of events) {
         expect(EVENT_TEXT_MAP[event]).toBeDefined();
-        expect(EVENT_TEXT_MAP[event]).toMatch(/^\[.+\]$/);
+        expect(EVENT_TEXT_MAP[event]).toMatch(/^[A-Z]+$/);
       }
     });
   });
@@ -241,61 +232,61 @@ describe("Text Renderer - createTextRenderer", () => {
 
   describe("renderToolIcon", () => {
     it("should return ASCII text for known tools", () => {
-      expect(renderer.renderToolIcon("read")).toBe("[READ]");
-      expect(renderer.renderToolIcon("bash")).toBe("[BASH]");
-      expect(renderer.renderToolIcon("thought")).toBe("[THINK]");
+      expect(renderer.renderToolIcon("read")).toBe("READ");
+      expect(renderer.renderToolIcon("bash")).toBe("BASH");
+      expect(renderer.renderToolIcon("thought")).toBe("USER");
     });
 
     it("should be case-insensitive", () => {
-      expect(renderer.renderToolIcon("READ")).toBe("[READ]");
-      expect(renderer.renderToolIcon("Bash")).toBe("[BASH]");
+      expect(renderer.renderToolIcon("READ")).toBe("READ");
+      expect(renderer.renderToolIcon("Bash")).toBe("BASH");
     });
 
     it("should return uppercase fallback for unknown tools", () => {
-      expect(renderer.renderToolIcon("myCustomTool")).toBe("[MYCUSTOMTOOL]");
+      expect(renderer.renderToolIcon("myCustomTool")).toBe("MYCUSTOMTOOL");
     });
 
     it("should handle MCP tool patterns", () => {
-      expect(renderer.renderToolIcon("tavily_search")).toBe("[TAVILY]");
-      expect(renderer.renderToolIcon("context7_query")).toBe("[C7]");
+      expect(renderer.renderToolIcon("tavily_search")).toBe("TAVILY");
+      expect(renderer.renderToolIcon("context7_query")).toBe("C7");
     });
   });
 
   describe("renderStatus", () => {
     it("should return ASCII status indicators", () => {
-      expect(renderer.renderStatus("ready")).toBe("[READY]");
-      expect(renderer.renderStatus("running")).toBe("[RUN]");
-      expect(renderer.renderStatus("paused")).toBe("[PAUSED]");
-      expect(renderer.renderStatus("complete")).toBe("[DONE]");
-      expect(renderer.renderStatus("error")).toBe("[ERROR]");
+      expect(renderer.renderStatus("ready")).toBe("READY");
+      expect(renderer.renderStatus("running")).toBe("RUN");
+      expect(renderer.renderStatus("paused")).toBe("PAUSED");
+      expect(renderer.renderStatus("complete")).toBe("DONE");
+      expect(renderer.renderStatus("error")).toBe("ERROR");
     });
   });
 
   describe("renderTaskStatus", () => {
     it("should return ASCII task status indicators", () => {
-      expect(renderer.renderTaskStatus("done")).toBe("[X]");
-      expect(renderer.renderTaskStatus("active")).toBe("[>]");
-      expect(renderer.renderTaskStatus("pending")).toBe("[ ]");
-      expect(renderer.renderTaskStatus("blocked")).toBe("[-]");
-      expect(renderer.renderTaskStatus("error")).toBe("[!]");
+      expect(renderer.renderTaskStatus("done")).toBe("X");
+      expect(renderer.renderTaskStatus("active")).toBe(">");
+      expect(renderer.renderTaskStatus("pending")).toBe(" ");
+      expect(renderer.renderTaskStatus("blocked")).toBe("-");
+      expect(renderer.renderTaskStatus("error")).toBe("!");
     });
   });
 
   describe("renderEvent", () => {
     it("should return ASCII event indicators", () => {
-      expect(renderer.renderEvent("session_start")).toBe("[START]");
-      expect(renderer.renderEvent("reasoning")).toBe("[THINK]");
-      expect(renderer.renderEvent("error")).toBe("[ERROR]");
-      expect(renderer.renderEvent("user_message")).toBe("[USER]");
+      expect(renderer.renderEvent("session_start")).toBe("START");
+      expect(renderer.renderEvent("reasoning")).toBe("USER");
+      expect(renderer.renderEvent("error")).toBe("ERROR");
+      expect(renderer.renderEvent("user_message")).toBe("USER");
     });
   });
 
   describe("renderOutcome", () => {
     it("should return ASCII outcome indicators", () => {
-      expect(renderer.renderOutcome("success")).toBe("[OK]");
-      expect(renderer.renderOutcome("error")).toBe("[ERR]");
-      expect(renderer.renderOutcome("running")).toBe("[...]");
-      expect(renderer.renderOutcome("warning")).toBe("[WARN]");
+      expect(renderer.renderOutcome("success")).toBe("OK");
+      expect(renderer.renderOutcome("error")).toBe("ERR");
+      expect(renderer.renderOutcome("running")).toBe("...");
+      expect(renderer.renderOutcome("warning")).toBe("WARN");
     });
   });
 
@@ -466,26 +457,25 @@ describe("Text Renderer - Unicode Mode", () => {
 
   describe("renderToolIcon", () => {
     it("should return Unicode symbols for known tools", () => {
-      // Now uses proper terminal-native symbols, NOT emojis
-      expect(renderer.renderToolIcon("read")).toBe("[◀]");
-      expect(renderer.renderToolIcon("bash")).toBe("[$]");
-      expect(renderer.renderToolIcon("thought")).toBe("[◈]");
+      expect(renderer.renderToolIcon("read")).toBe("◀");
+      expect(renderer.renderToolIcon("bash")).toBe("$");
+      expect(renderer.renderToolIcon("thought")).toBe("◈");
     });
   });
 
   describe("renderStatus", () => {
     it("should return Unicode status symbols", () => {
-      expect(renderer.renderStatus("complete")).toBe("[✓]");
-      expect(renderer.renderStatus("error")).toBe("[✗]");
-      expect(renderer.renderStatus("running")).toBe("[▶]");
+      expect(renderer.renderStatus("complete")).toBe("✓");
+      expect(renderer.renderStatus("error")).toBe("✗");
+      expect(renderer.renderStatus("running")).toBe("▶");
     });
   });
 
   describe("renderTaskStatus", () => {
     it("should return Unicode task status symbols", () => {
-      expect(renderer.renderTaskStatus("done")).toBe("[✓]");
-      expect(renderer.renderTaskStatus("active")).toBe("[▶]");
-      expect(renderer.renderTaskStatus("pending")).toBe("[○]");
+      expect(renderer.renderTaskStatus("done")).toBe("✓");
+      expect(renderer.renderTaskStatus("active")).toBe("▶");
+      expect(renderer.renderTaskStatus("pending")).toBe("○");
     });
   });
 });
