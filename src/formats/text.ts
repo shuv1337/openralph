@@ -204,40 +204,35 @@ export function createTextFormatter(options: TextFormatterOptions): HeadlessForm
         break;
         
       case "iteration_end":
-        line = colorize(
-          `[*] Iteration ${event.iteration} complete`,
-          "success",
-          { mode }
-        ) + colorize(
-          ` | ${event.durationMs}ms | ${event.commits} commit${event.commits !== 1 ? "s" : ""}`,
-          "text",
-          { mode }
-        );
+        line = colorize("|", "success", { mode }) + " " + colorize("FINISH  ", "text", { dim: true, mode }) +
+          colorize(`Iteration ${event.iteration} complete`, "success", { mode }) + 
+          colorize(` | ${event.durationMs}ms | ${event.commits} commit${event.commits !== 1 ? "s" : ""}`, "text", { dim: true, mode });
         break;
         
       case "tool": {
-        const toolIcon = renderer.renderToolIcon(event.name);
         const colorKey = TOOL_COLORS[event.name.toLowerCase()] ?? "textMuted";
+        const coloredBar = colorize("|", colorKey, { mode });
         
-        // Human-readable tool name with proper color coding
+        // Human-readable tool name - dimmed and padded to align with opencode style
         const toolDisplayName = formatToolDisplayName(event.name);
-        const coloredToolName = colorize(toolDisplayName, colorKey, { mode });
+        const dimmedToolName = colorize(toolDisplayName.padEnd(8, " "), "text", { dim: true, mode });
         
         const detail = event.detail 
           ? ` ${colorize(event.detail, "textMuted", { dim: true, mode })}` 
           : "";
         
-        // Format: [ICON] ToolName: title detail (or just [ICON] ToolName if no title)
+        // Format: | ToolName Title detail (aligns with opencode style)
         const title = event.title || "";
         line = title 
-          ? `${toolIcon} ${coloredToolName}: ${title}${detail}`
-          : `${toolIcon} ${coloredToolName}${detail}`;
+          ? `${coloredBar} ${dimmedToolName} ${colorize(title, "text", { mode })}${detail}`
+          : `${coloredBar} ${dimmedToolName}${detail}`;
         break;
       }
         
       case "reasoning": {
-        const thoughtIcon = renderer.renderToolIcon("thought");
-        line = `${thoughtIcon} ${colorize(event.text, "text", { dim: true, mode })}`;
+        const coloredBar = colorize("|", "warning", { mode });
+        const dimmedToolName = colorize("User    ".padEnd(8, " "), "text", { dim: true, mode });
+        line = `${coloredBar} ${dimmedToolName} ${colorize(event.text, "text", { dim: true, mode })}`;
         break;
       }
         
@@ -247,28 +242,28 @@ export function createTextFormatter(options: TextFormatterOptions): HeadlessForm
         return;
         
       case "progress":
-        line = renderer.renderProgress(event.done, event.total);
+        line = colorize("|", "info", { mode }) + " " + colorize("STEP    ", "text", { dim: true, mode }) + renderer.renderProgress(event.done, event.total);
         break;
         
       case "stats":
-        line = colorize("[>] Stats:", "info", { mode }) + 
-          colorize(` ${event.commits} commit${event.commits !== 1 ? "s" : ""}`, "text", { mode }) +
+        line = colorize("|", "info", { mode }) + " " + colorize("STATS   ", "text", { dim: true, mode }) + 
+          colorize(`${event.commits} commit${event.commits !== 1 ? "s" : ""}`, "text", { mode }) +
           colorize(` +${event.linesAdded}`, "success", { mode }) +
           colorize(` -${event.linesRemoved}`, "error", { mode });
         break;
         
       case "pause":
-        line = renderer.renderStatus("paused");
+        line = colorize("|", "warning", { mode }) + " " + colorize("PAUSED  ", "text", { dim: true, mode });
         break;
         
       case "resume":
-        line = renderer.renderStatus("running");
+        line = colorize("|", "success", { mode }) + " " + colorize("RUNNING ", "text", { dim: true, mode });
         break;
         
       case "idle":
         line = event.isIdle 
-          ? colorize("[||] Waiting for input...", "warning", { mode })
-          : colorize("[>] Processing...", "info", { mode });
+          ? colorize("|", "warning", { mode }) + " " + colorize("IDLE    ", "text", { dim: true, mode }) + colorize("Waiting for input...", "text", { dim: true, mode })
+          : colorize("|", "info", { mode }) + " " + colorize("BUSY    ", "text", { dim: true, mode }) + colorize("Processing...", "text", { dim: true, mode });
         break;
         
       case "error":
@@ -279,12 +274,12 @@ export function createTextFormatter(options: TextFormatterOptions): HeadlessForm
         }
         lastErrorMessage = event.message;
         lastErrorTime = now;
-        line = `${renderer.renderOutcome("error")} ${colorize(event.message, "error", { mode })}`;
+        line = colorize("|", "error", { mode }) + " " + colorize("ERROR   ", "text", { dim: true, mode }) + colorize(event.message, "error", { mode });
         break;
         
       case "complete":
         // Complete event marks completion; actual summary in finalize
-        line = renderer.renderOutcome("success") + " " + colorize("[DONE]", "success", { bold: true, mode });
+        line = colorize("|", "success", { mode }) + " " + colorize("DONE    ", "text", { dim: true, mode }) + colorize("Task completed successfully", "success", { bold: true, mode });
         break;
         
       case "model":
@@ -364,8 +359,9 @@ export function createTextFormatter(options: TextFormatterOptions): HeadlessForm
         break;
         
       case "plan_modified": {
-        const icon = renderer.renderToolIcon("task");
-        line = `${icon} ${colorize("Plan", "violet", { mode })}: modified`;
+        const coloredBar = colorize("|", "violet", { mode });
+        const dimmedToolName = colorize("Plan".padEnd(8, " "), "text", { dim: true, mode });
+        line = `${coloredBar} ${dimmedToolName} ${colorize("modified", "text", { mode })}`;
         break;
       }
         
