@@ -20,6 +20,37 @@ export function isGeneratedPlugin(content: string): boolean {
 }
 
 /**
+ * Detect if an edit's newString indicates task completion.
+ * Looks for the specific combination of "status": "done" AND "passes": true.
+ * Supports both JSON-formatted strings and partial property updates.
+ * 
+ * Platform agnostic - works on Windows, Linux, and macOS.
+ * 
+ * @param newString - The replacement content from the edit tool
+ * @returns true if the edit marks a task as completed
+ */
+export function detectsTaskCompletion(newString: string): boolean {
+  if (!newString || newString.trim().length < 5) {
+    return false;
+  }
+
+  // Normalize line endings for cross-platform support
+  const normalized = newString.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
+  // Check for status: "done" or "status": "done"
+  const hasDoneStatus = 
+    /["']?status["']?\s*:\s*["']done["']/i.test(normalized) ||
+    /"status"\s*:\s*"done"/i.test(normalized);
+
+  // Check for passes: true or "passes": true
+  const hasPassesTrue = 
+    /["']?passes["']?\s*:\s*true/i.test(normalized) ||
+    /"passes"\s*:\s*true/i.test(normalized);
+
+  return hasDoneStatus && hasPassesTrue;
+}
+
+/**
  * Template for the write-guardrail plugin.
  * This plugin protects specified files from being overwritten or modified by AI agents.
  */
@@ -34,12 +65,19 @@ import type { Plugin } from "@opencode-ai/plugin"
  * - Bash tool: Blocks commands that overwrite/delete protected files
  * - Edit tool on prd.json: Limited to ONE TASK per session (multiple edits to same task OK)
  * 
+ * SESSION COMPLETION LOCK:
+ * Once Ralph marks a task as "done" with passes=true, the prd.json file is locked
+ * for the remainder of that session. This ensures:
+ * - Ralph completes exactly ONE task per iteration
+ * - No further modifications can be made until a new session starts
+ * - The lock resets automatically when a new iteration/session begins
+ * 
  * The one-task-per-session rule for prd.json ensures Ralph makes focused,
  * incremental progress. Multiple edits to the SAME task are allowed
- * (e.g., pending → active → done lifecycle transitions).
+ * (e.g., pending → active → done lifecycle transitions) until completion.
  * 
  * Protected files by default:
- * - prd.json - The PRD plan file (1 task per session)
+ * - prd.json - The PRD plan file (1 task per session, locked after completion)
  * - progress.txt - Progress tracking
  * - .ralph-prompt.md - Prompt template
  * - AGENTS.md - Agent configuration
@@ -60,6 +98,15 @@ const PROTECTED_FILES = [
 // This allows multiple edits to the SAME task (e.g., pending → active → done)
 // but blocks editing DIFFERENT tasks in the same session
 let activeTaskIndex: number | null = null
+
+// Session completion lock - blocks ALL further edits to prd.json once a task is completed
+// This ensures Ralph can only complete ONE task per session/iteration
+let isPlanLockedThisSession: boolean = false
+
+// Transient flag between before and after hooks
+// Set to true in before hook when completion is detected, activated in after hook on success
+let pendingLockActivation: boolean = false
+
 const PRD_FILE_NAME = "prd.json"
 
 /**
@@ -187,13 +234,43 @@ function wouldModifyProtectedFile(command: string): string | null {
   return null
 }
 
+/**
+ * Detect if an edit's newString indicates task completion.
+ * Looks for the specific combination of "status": "done" AND "passes": true.
+ * Supports both JSON-formatted strings and partial property updates.
+ * 
+ * Platform agnostic - works on Windows, Linux, and macOS.
+ */
+function detectsTaskCompletion(newString: string): boolean {
+  if (!newString || newString.trim().length < 5) {
+    return false
+  }
+
+  // Normalize line endings for cross-platform support
+  const normalized = newString.replace(/\\r\\n/g, "\\n").replace(/\\r/g, "\\n")
+
+  // Check for status: "done" or "status": "done"
+  const hasDoneStatus = 
+    /["']?status["']?\\s*:\\s*["']done["']/i.test(normalized) ||
+    /"status"\\s*:\\s*"done"/i.test(normalized)
+
+  // Check for passes: true or "passes": true
+  const hasPassesTrue = 
+    /["']?passes["']?\\s*:\\s*true/i.test(normalized) ||
+    /"passes"\\s*:\\s*true/i.test(normalized)
+
+  return hasDoneStatus && hasPassesTrue
+}
+
 export const RalphWriteGuardrail: Plugin = async () => {
   return {
-    // Reset task tracking when a new session starts
-    // This prevents false positives when Ralph starts a new iteration
+    // Reset all session-level tracking when a new session starts
+    // This ensures the guardrail state is clean for each iteration
     event: async ({ event }) => {
       if (event.type === "session.created") {
         activeTaskIndex = null
+        isPlanLockedThisSession = false
+        pendingLockActivation = false
       }
     },
     "tool.execute.before": async (input, output) => {
@@ -230,7 +307,7 @@ export const RalphWriteGuardrail: Plugin = async () => {
 
       // Guard against editing DIFFERENT tasks in prd.json within a single session
       // Ralph should focus on ONE task per iteration, but can make multiple edits to that task
-      // (e.g., pending → active → done lifecycle is allowed)
+      // (e.g., pending → active → done lifecycle is allowed) UNTIL task is marked complete
       if (input.tool === "edit") {
         const filePath = output.args?.filePath as string | undefined
         if (filePath) {
@@ -240,8 +317,18 @@ export const RalphWriteGuardrail: Plugin = async () => {
                            normalizedPath.endsWith("\\\\" + PRD_FILE_NAME)
           
           if (isPrdFile) {
+            // SESSION COMPLETION LOCK: Block ALL edits if a task was already completed
+            if (isPlanLockedThisSession) {
+              throw new Error(
+                \`[Ralph Guardrail] Task completed this session. Blocking further edits to prd.json. \\n\` +
+                \`To ensure incremental progress, only one task can be completed per iteration. \\n\` +
+                \`Start a new iteration to continue with the next task.\`
+              )
+            }
+
             // Find which task is being edited by matching oldString against file content
             const oldString = output.args?.oldString as string | undefined
+            const newString = output.args?.newString as string | undefined
             
             if (oldString && oldString.length >= 5) {
               const taskIndex = await findTaskIndexByContent(filePath, oldString)
@@ -263,8 +350,23 @@ export const RalphWriteGuardrail: Plugin = async () => {
               }
               // If we couldn't determine task index, allow the edit (fail-open for edge cases)
             }
+
+            // Check if this edit marks the task as complete
+            // If so, set the pending lock flag (will be activated in after hook on success)
+            if (newString && detectsTaskCompletion(newString)) {
+              pendingLockActivation = true
+            }
           }
         }
+      }
+    },
+    // Activate the session lock AFTER a successful edit that marks task as complete
+    // This ensures we don't lock if the edit fails (allows retry)
+    "tool.execute.after": async (input, output) => {
+      if (input.tool === "edit" && pendingLockActivation) {
+        // The edit succeeded, activate the lock
+        isPlanLockedThisSession = true
+        pendingLockActivation = false
       }
     },
   }
