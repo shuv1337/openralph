@@ -195,7 +195,7 @@ jobs:
         run: |
           echo "Creating dev tag at current commit..."
           git tag -f dev
-          git push origin dev --force
+          git push origin refs/tags/dev --force
           echo "Dev tag created at ${GITHUB_SHA}"
 
       - name: Create GitHub release
